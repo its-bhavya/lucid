@@ -3,6 +3,7 @@ import { fetchStock, analyzeStock, compareStocks } from "../api";
 import TickerCard from "../components/TickerCard";
 import FullAnalysis from "../components/FullAnalysis";
 import CompareView from "../components/CompareView";
+import AdviceForm from "../components/AdviceForm";
 import LoadingSpinner from "../components/LoadingSpinner";
 
 const STORAGE_KEY = "lucid_watchlist";
@@ -25,6 +26,8 @@ export default function Watchlist() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
+
+  const [adviceItem, setAdviceItem] = useState(null);
 
   // Compare state
   const [compareSource, setCompareSource] = useState(null);
@@ -138,6 +141,14 @@ export default function Watchlist() {
         />
       )}
 
+      {/* Advice modal */}
+      {adviceItem && (
+        <AdviceForm
+          stock={adviceItem.stock}
+          onClose={() => setAdviceItem(null)}
+        />
+      )}
+
       {/* Compare mode banner */}
       {compareSource && (
         <div className="mb-6 flex items-center justify-between rounded-xl border border-accent/30 bg-accent/5 px-5 py-3">
@@ -193,7 +204,7 @@ export default function Watchlist() {
                 analysis={item.analysis}
                 onViewFull={() => setSelectedItem(item)}
                 onCompare={() => handleCompareStart(item)}
-                onAdvice={() => {}}
+                onAdvice={() => setAdviceItem(item)}
                 compareMode={!!compareSource}
                 isCompareSource={compareSource?.stock.ticker === item.stock.ticker}
                 onSelect={() => handleCompareSelect(item)}
