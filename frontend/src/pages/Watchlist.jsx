@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { fetchStock, analyzeStock } from "../api";
 import TickerCard from "../components/TickerCard";
+import FullAnalysis from "../components/FullAnalysis";
 import LoadingSpinner from "../components/LoadingSpinner";
 
 const STORAGE_KEY = "lucid_watchlist";
@@ -22,6 +23,7 @@ export default function Watchlist() {
   const [ticker, setTicker] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [selectedItem, setSelectedItem] = useState(null);
 
   useEffect(() => {
     saveWatchlist(watchlist);
@@ -70,6 +72,14 @@ export default function Watchlist() {
 
   return (
     <div>
+      {/* Full analysis modal */}
+      {selectedItem && (
+        <FullAnalysis
+          stock={selectedItem.stock}
+          analysis={selectedItem.analysis}
+          onClose={() => setSelectedItem(null)}
+        />
+      )}
       {/* Search bar */}
       <form onSubmit={handleAdd} className="mb-8 flex gap-3">
         <input
@@ -107,7 +117,7 @@ export default function Watchlist() {
                 key={item.stock.ticker}
                 stock={item.stock}
                 analysis={item.analysis}
-                onViewFull={() => {}}
+                onViewFull={() => setSelectedItem(item)}
                 onCompare={() => {}}
                 onAdvice={() => {}}
               />
