@@ -1,16 +1,13 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Layout from "./components/Layout";
-
-function Home() {
-  return <p className="text-text-muted">Lucid frontend running</p>;
-}
+import Watchlist from "./pages/Watchlist";
 
 function App() {
   return (
     <BrowserRouter>
       <Layout>
         <Routes>
-          <Route path="/" element={<Home />} />
+          <Route path="/" element={<Watchlist />} />
         </Routes>
       </Layout>
     </BrowserRouter>
