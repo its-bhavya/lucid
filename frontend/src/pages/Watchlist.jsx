@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
-import { fetchStock, analyzeStock } from "../api";
+import { fetchStock, analyzeStock, compareStocks } from "../api";
 import TickerCard from "../components/TickerCard";
 import FullAnalysis from "../components/FullAnalysis";
+import CompareView from "../components/CompareView";
 import LoadingSpinner from "../components/LoadingSpinner";
 
 const STORAGE_KEY = "lucid_watchlist";
@@ -25,11 +26,15 @@ export default function Watchlist() {
   const [error, setError] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
 
+  // Compare state
+  const [compareSource, setCompareSource] = useState(null);
+  const [compareLoading, setCompareLoading] = useState(false);
+  const [compareResult, setCompareResult] = useState(null);
+
   useEffect(() => {
     saveWatchlist(watchlist);
   }, [watchlist]);
 
-  // Auto-dismiss error toast
   useEffect(() => {
     if (!error) return;
     const t = setTimeout(() => setError(null), 4000);
@@ -62,12 +67,64 @@ export default function Watchlist() {
     }
   }
 
-  function handleRemove(tickerSymbol) {
-    setWatchlist((prev) => prev.filter((item) => item.stock.ticker !== tickerSymbol));
-  }
-
   function handleClear() {
     setWatchlist([]);
+  }
+
+  function handleCompareStart(item) {
+    if (watchlist.length < 2) {
+      setError("Add at least 2 stocks to compare");
+      return;
+    }
+    setCompareSource(item);
+  }
+
+  function handleCancelCompare() {
+    setCompareSource(null);
+  }
+
+  async function handleCompareSelect(item) {
+    if (!compareSource) return;
+    setCompareLoading(true);
+    try {
+      const result = await compareStocks(
+        compareSource.stock.ticker,
+        item.stock.ticker,
+      );
+      setCompareResult({
+        stock1: compareSource.stock,
+        stock2: item.stock,
+        comparison: result,
+      });
+    } catch (err) {
+      const msg =
+        err.response?.data?.detail || err.response?.data?.message || "Comparison failed";
+      setError(msg);
+    } finally {
+      setCompareLoading(false);
+      setCompareSource(null);
+    }
+  }
+
+  function handleBackFromCompare() {
+    setCompareResult(null);
+  }
+
+  // --- Full-page compare result ---
+  if (compareResult) {
+    return (
+      <CompareView
+        stock1={compareResult.stock1}
+        stock2={compareResult.stock2}
+        comparison={compareResult.comparison}
+        onBack={handleBackFromCompare}
+      />
+    );
+  }
+
+  // --- Compare loading ---
+  if (compareLoading) {
+    return <LoadingSpinner message="Comparing stocks with AI..." />;
   }
 
   return (
@@ -80,6 +137,23 @@ export default function Watchlist() {
           onClose={() => setSelectedItem(null)}
         />
       )}
+
+      {/* Compare mode banner */}
+      {compareSource && (
+        <div className="mb-6 flex items-center justify-between rounded-xl border border-accent/30 bg-accent/5 px-5 py-3">
+          <p className="text-sm text-accent">
+            Select another stock to compare with{" "}
+            <span className="font-bold">{compareSource.stock.ticker}</span>
+          </p>
+          <button
+            onClick={handleCancelCompare}
+            className="text-xs text-text-muted transition-colors hover:text-accent-red"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
       {/* Search bar */}
       <form onSubmit={handleAdd} className="mb-8 flex gap-3">
         <input
@@ -118,8 +192,11 @@ export default function Watchlist() {
                 stock={item.stock}
                 analysis={item.analysis}
                 onViewFull={() => setSelectedItem(item)}
-                onCompare={() => {}}
+                onCompare={() => handleCompareStart(item)}
                 onAdvice={() => {}}
+                compareMode={!!compareSource}
+                isCompareSource={compareSource?.stock.ticker === item.stock.ticker}
+                onSelect={() => handleCompareSelect(item)}
               />
             ))}
           </div>

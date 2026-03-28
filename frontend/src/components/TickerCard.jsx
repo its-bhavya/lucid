@@ -22,13 +22,25 @@ function formatPercent(n) {
   return `${(n * 100).toFixed(2)}%`;
 }
 
-export default function TickerCard({ stock, analysis, onViewFull, onCompare, onAdvice }) {
+export default function TickerCard({
+  stock, analysis, onViewFull, onCompare, onAdvice,
+  compareMode = false, isCompareSource = false, onSelect,
+}) {
   const [showTooltip, setShowTooltip] = useState(false);
 
   const verdictStyle = VERDICT_STYLES[analysis?.verdict] || "bg-card text-text-muted";
 
+  const borderClass = isCompareSource
+    ? "border-accent ring-1 ring-accent/30"
+    : compareMode
+      ? "border-accent-green/50 cursor-pointer hover:border-accent-green hover:ring-1 hover:ring-accent-green/30"
+      : "border-border hover:border-accent/40";
+
   return (
-    <div className="rounded-xl border border-border bg-card p-5 transition-colors hover:border-accent/40">
+    <div
+      className={`rounded-xl border bg-card p-5 transition-all ${borderClass}`}
+      onClick={compareMode && !isCompareSource ? onSelect : undefined}
+    >
       {/* Header */}
       <div className="mb-4 flex items-start justify-between">
         <div>
