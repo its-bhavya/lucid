@@ -61,6 +61,13 @@ export default function FullAnalysis({ stock, analysis, onClose }) {
         </button>
 
         <div className="p-8">
+          {/* Analysis unavailable banner */}
+          {(!analysis || analysis._error) && (
+            <div className="mb-6 rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-400">
+              AI analysis unavailable — showing stock data only
+            </div>
+          )}
+
           {/* Section 1 — Header */}
           <div className="mb-8 flex items-start justify-between pr-8">
             <div>
@@ -104,7 +111,7 @@ export default function FullAnalysis({ stock, analysis, onClose }) {
                 <p className="text-xs text-text-muted">P/E Ratio</p>
                 <p className="mt-1 text-xl font-bold text-white">{stock.pe_ratio ?? "N/A"}</p>
                 <p className="mt-2 text-xs leading-relaxed text-text-muted">
-                  {analysis?.pe_explanation}
+                  {analysis?.pe_explanation || "Explanation unavailable"}
                 </p>
               </div>
               <div className="rounded-xl border border-border bg-card p-4">
@@ -113,7 +120,7 @@ export default function FullAnalysis({ stock, analysis, onClose }) {
                   {formatNumber(stock.free_cash_flow)}
                 </p>
                 <p className="mt-2 text-xs leading-relaxed text-text-muted">
-                  {analysis?.fcf_explanation}
+                  {analysis?.fcf_explanation || "Explanation unavailable"}
                 </p>
               </div>
               <div className="rounded-xl border border-border bg-card p-4">

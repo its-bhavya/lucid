@@ -7,6 +7,7 @@ import AdviceForm from "../components/AdviceForm";
 import LoadingSpinner from "../components/LoadingSpinner";
 
 const STORAGE_KEY = "lucid_watchlist";
+const EXAMPLE_TICKERS = ["AAPL", "MSFT", "TSLA"];
 
 function loadWatchlist() {
   try {
@@ -26,7 +27,6 @@ export default function Watchlist() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
-
   const [adviceItem, setAdviceItem] = useState(null);
 
   // Compare state
@@ -44,9 +44,8 @@ export default function Watchlist() {
     return () => clearTimeout(t);
   }, [error]);
 
-  async function handleAdd(e) {
-    e.preventDefault();
-    const t = ticker.trim().toUpperCase();
+  async function addTicker(symbol) {
+    const t = symbol.trim().toUpperCase();
     if (!t) return;
 
     if (watchlist.some((item) => item.stock.ticker === t)) {
@@ -58,16 +57,27 @@ export default function Watchlist() {
     setError(null);
     try {
       const stock = await fetchStock(t);
-      const analysis = await analyzeStock(stock);
+      let analysis = null;
+      try {
+        analysis = await analyzeStock(stock);
+      } catch {
+        // Gemini failed — still add the card with stock data
+        analysis = { _error: true };
+      }
       setWatchlist((prev) => [{ stock, analysis }, ...prev]);
       setTicker("");
     } catch (err) {
       const msg =
-        err.response?.data?.detail || err.response?.data?.message || "Ticker not found";
+        err.response?.data?.detail || err.response?.data?.message || `Ticker "${t}" not found`;
       setError(msg);
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleAdd(e) {
+    e.preventDefault();
+    addTicker(ticker);
   }
 
   function handleClear() {
@@ -201,7 +211,7 @@ export default function Watchlist() {
               <TickerCard
                 key={item.stock.ticker}
                 stock={item.stock}
-                analysis={item.analysis}
+                analysis={item.analysis?._error ? null : item.analysis}
                 onViewFull={() => setSelectedItem(item)}
                 onCompare={() => handleCompareStart(item)}
                 onAdvice={() => setAdviceItem(item)}
@@ -222,11 +232,29 @@ export default function Watchlist() {
         </>
       ) : (
         !loading && (
-          <div className="py-20 text-center">
-            <p className="text-lg text-text-muted">Your watchlist is empty</p>
-            <p className="mt-1 text-sm text-text-muted/60">
-              Search for a ticker above to get started
+          <div className="flex flex-col items-center py-24">
+            {/* Search icon */}
+            <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-surface">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-text-muted">
+                <circle cx="11" cy="11" r="8" />
+                <path d="m21 21-4.3-4.3" />
+              </svg>
+            </div>
+            <p className="text-lg font-medium text-text-muted">Add a ticker to get started</p>
+            <p className="mt-1 text-sm text-text-muted/50">
+              Search for a stock above or try one of these
             </p>
+            <div className="mt-5 flex gap-2">
+              {EXAMPLE_TICKERS.map((t) => (
+                <button
+                  key={t}
+                  onClick={() => { setTicker(t); addTicker(t); }}
+                  className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-text-primary transition-all duration-200 hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-lg hover:shadow-accent/5"
+                >
+                  Try {t}
+                </button>
+              ))}
+            </div>
           </div>
         )
       )}

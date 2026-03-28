@@ -7,16 +7,6 @@ const VERDICT_STYLES = {
   OVERVALUED: "bg-accent-red/15 text-accent-red",
 };
 
-function formatNumber(n) {
-  if (n == null) return "N/A";
-  const num = typeof n === "string" ? parseFloat(n) : n;
-  if (isNaN(num)) return "N/A";
-  if (num >= 1e12) return `$${(num / 1e12).toFixed(2)}T`;
-  if (num >= 1e9) return `$${(num / 1e9).toFixed(2)}B`;
-  if (num >= 1e6) return `$${(num / 1e6).toFixed(2)}M`;
-  return `$${num.toFixed(2)}`;
-}
-
 function formatPercent(n) {
   if (n == null) return "N/A";
   return `${(n * 100).toFixed(2)}%`;
@@ -34,11 +24,11 @@ export default function TickerCard({
     ? "border-accent ring-1 ring-accent/30"
     : compareMode
       ? "border-accent-green/50 cursor-pointer hover:border-accent-green hover:ring-1 hover:ring-accent-green/30"
-      : "border-border hover:border-accent/40";
+      : "border-border hover:border-accent/40 hover:shadow-lg hover:shadow-accent/5 hover:-translate-y-0.5";
 
   return (
     <div
-      className={`rounded-xl border bg-card p-5 transition-all ${borderClass}`}
+      className={`rounded-xl border bg-card p-5 transition-all duration-200 ${borderClass}`}
       onClick={compareMode && !isCompareSource ? onSelect : undefined}
     >
       {/* Header */}
@@ -78,13 +68,19 @@ export default function TickerCard({
       </div>
 
       {/* Verdict badge */}
-      {analysis?.verdict && (
+      {analysis?.verdict ? (
         <div className="mb-4">
           <span className={`inline-block rounded-full px-3 py-1 text-xs font-semibold ${verdictStyle}`}>
             {analysis.verdict}
           </span>
         </div>
-      )}
+      ) : analysis && !analysis.verdict ? (
+        <div className="mb-4">
+          <span className="inline-block rounded-full bg-card px-3 py-1 text-xs text-text-muted">
+            Analysis unavailable
+          </span>
+        </div>
+      ) : null}
 
       {/* Action buttons */}
       <div className="flex gap-2">
