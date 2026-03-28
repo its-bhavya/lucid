@@ -6,9 +6,9 @@ const RISK_LEVELS = ["Conservative", "Moderate", "Aggressive"];
 const TIME_OPTIONS = ["1 year", "3 years", "5-10 years", "10+ years"];
 
 const VERDICT_STYLES = {
-  BUY: "bg-accent-green/15 text-accent-green border-accent-green/30",
-  HOLD: "bg-yellow-500/15 text-yellow-400 border-yellow-500/30",
-  SELL: "bg-accent-red/15 text-accent-red border-accent-red/30",
+  BUY: "bg-green/10 text-green border-green/20",
+  HOLD: "bg-yellow/10 text-yellow border-yellow/20",
+  SELL: "bg-red/10 text-red border-red/20",
 };
 
 function formatAmount(n) {
@@ -18,16 +18,14 @@ function formatAmount(n) {
 
 export default function AdviceForm({ stock, onClose }) {
   const [visible, setVisible] = useState(false);
-  const [step, setStep] = useState("form"); // form | loading | result
+  const [step, setStep] = useState("form");
   const [fade, setFade] = useState(true);
 
-  // Form state
   const [amount, setAmount] = useState("");
   const [risk, setRisk] = useState("Moderate");
   const [horizon, setHorizon] = useState("3 years");
   const [holdings, setHoldings] = useState("");
 
-  // Result
   const [advice, setAdvice] = useState(null);
   const [error, setError] = useState(null);
 
@@ -76,21 +74,21 @@ export default function AdviceForm({ stock, onClose }) {
     }
   }
 
-  const verdictStyle = VERDICT_STYLES[advice?.recommendation] || "bg-card text-text-muted border-border";
+  const verdictStyle = VERDICT_STYLES[advice?.recommendation] || "bg-surface text-text-muted border-border";
 
   return (
     <div
-      className={`fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 backdrop-blur-sm transition-opacity duration-200 ${visible ? "opacity-100" : "opacity-0"}`}
+      className={`fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/30 backdrop-blur-sm transition-opacity duration-200 ${visible ? "opacity-100" : "opacity-0"}`}
       onClick={handleClose}
     >
       <div
-        className={`relative mx-4 my-10 w-full max-w-[560px] rounded-2xl border border-border bg-surface shadow-2xl transition-all duration-200 ${visible ? "translate-y-0 opacity-100" : "translate-y-6 opacity-0"}`}
+        className={`relative mx-4 my-10 w-full max-w-[560px] card-base shadow-[var(--shadow-card-hover)] transition-all duration-200 ${visible ? "translate-y-0 opacity-100" : "translate-y-6 opacity-0"}`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Close button */}
         <button
           onClick={handleClose}
-          className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-card hover:text-white"
+          className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-surface hover:text-text-primary"
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
             <path d="M4 4l8 8M12 4l-8 8" />
@@ -99,11 +97,11 @@ export default function AdviceForm({ stock, onClose }) {
 
         {/* Modal header */}
         <div className="border-b border-border px-8 py-5 pr-12">
-          <h2 className="text-lg font-bold text-white">
+          <h2 className="heading text-lg font-bold text-text-primary">
             Personalized Advice
           </h2>
           <p className="text-sm text-text-muted">
-            for <span className="font-medium text-accent">{stock.ticker}</span> — {stock.name}
+            for <span className="mono font-medium text-accent">{stock.ticker}</span> — {stock.name}
           </p>
         </div>
 
@@ -113,7 +111,7 @@ export default function AdviceForm({ stock, onClose }) {
           {step === "form" && (
             <form onSubmit={handleSubmit} className="space-y-5 p-8">
               {error && (
-                <div className="rounded-lg border border-accent-red/30 bg-accent-red/10 px-4 py-3 text-sm text-accent-red">
+                <div className="rounded-xl border border-red/20 bg-red/5 px-4 py-3 text-sm text-red">
                   {error}
                 </div>
               )}
@@ -131,7 +129,7 @@ export default function AdviceForm({ stock, onClose }) {
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                     placeholder="5000"
-                    className="w-full rounded-lg border border-border bg-card py-2.5 pl-7 pr-4 text-sm text-text-primary placeholder-text-muted outline-none transition-colors focus:border-accent"
+                    className="mono w-full rounded-xl border border-border bg-card py-2.5 pl-7 pr-4 text-sm text-text-primary placeholder-text-muted outline-none transition-colors focus:border-accent focus:ring-1 focus:ring-accent/20"
                   />
                 </div>
               </div>
@@ -147,10 +145,10 @@ export default function AdviceForm({ stock, onClose }) {
                       key={level}
                       type="button"
                       onClick={() => setRisk(level)}
-                      className={`flex-1 rounded-lg border py-2.5 text-xs font-medium transition-all ${
+                      className={`flex-1 rounded-xl border py-2.5 text-xs font-semibold transition-all ${
                         risk === level
-                          ? "border-accent bg-accent/15 text-accent"
-                          : "border-border bg-card text-text-muted hover:border-border hover:text-text-primary"
+                          ? "border-accent bg-accent text-white shadow-md"
+                          : "border-border bg-card text-text-secondary hover:border-accent-light hover:text-accent"
                       }`}
                     >
                       {level}
@@ -167,7 +165,7 @@ export default function AdviceForm({ stock, onClose }) {
                 <select
                   value={horizon}
                   onChange={(e) => setHorizon(e.target.value)}
-                  className="w-full appearance-none rounded-lg border border-border bg-card px-4 py-2.5 text-sm text-text-primary outline-none transition-colors focus:border-accent"
+                  className="w-full appearance-none rounded-xl border border-border bg-card px-4 py-2.5 text-sm text-text-primary outline-none transition-colors focus:border-accent focus:ring-1 focus:ring-accent/20"
                 >
                   {TIME_OPTIONS.map((opt) => (
                     <option key={opt} value={opt}>{opt}</option>
@@ -185,13 +183,13 @@ export default function AdviceForm({ stock, onClose }) {
                   value={holdings}
                   onChange={(e) => setHoldings(e.target.value)}
                   placeholder="e.g. VTI, QQQ, none"
-                  className="w-full rounded-lg border border-border bg-card px-4 py-2.5 text-sm text-text-primary placeholder-text-muted outline-none transition-colors focus:border-accent"
+                  className="w-full rounded-xl border border-border bg-card px-4 py-2.5 text-sm text-text-primary placeholder-text-muted outline-none transition-colors focus:border-accent focus:ring-1 focus:ring-accent/20"
                 />
               </div>
 
               <button
                 type="submit"
-                className="w-full rounded-lg bg-accent py-3 text-sm font-semibold text-white transition-colors hover:bg-accent/80"
+                className="w-full rounded-full bg-accent py-3 text-sm font-semibold text-white transition-all hover:-translate-y-px hover:shadow-lg"
               >
                 Generate My Advice
               </button>
@@ -213,7 +211,7 @@ export default function AdviceForm({ stock, onClose }) {
                 <span className={`inline-block rounded-full border px-6 py-2 text-xl font-bold ${verdictStyle}`}>
                   {advice.recommendation}
                 </span>
-                <p className="text-3xl font-bold text-white">
+                <p className="mono text-3xl font-bold text-text-primary">
                   {formatAmount(advice.amount)}
                 </p>
                 <p className="text-sm text-text-muted">suggested investment</p>
@@ -224,9 +222,11 @@ export default function AdviceForm({ stock, onClose }) {
                 <h3 className="mb-2 text-sm font-semibold uppercase tracking-wider text-text-muted">
                   Why This Fits You
                 </h3>
-                <p className="rounded-xl bg-card p-4 text-sm leading-relaxed text-text-primary">
-                  {advice.reasoning}
-                </p>
+                <div className="card-base p-4">
+                  <p className="text-sm leading-relaxed text-text-secondary">
+                    {advice.reasoning}
+                  </p>
+                </div>
               </div>
 
               {/* Risks */}
@@ -235,10 +235,10 @@ export default function AdviceForm({ stock, onClose }) {
                   Risks for Your Situation
                 </h3>
                 <ul className="space-y-2">
-                  {advice.risks?.map((risk, i) => (
-                    <li key={i} className="flex items-start gap-2 rounded-xl bg-card px-4 py-3">
-                      <span className="mt-0.5 text-accent-red">&#x2022;</span>
-                      <span className="text-sm text-text-primary">{risk}</span>
+                  {advice.risks?.map((r, i) => (
+                    <li key={i} className="flex items-start gap-2 rounded-xl bg-surface px-4 py-3">
+                      <span className="mt-0.5 text-red">&#x2022;</span>
+                      <span className="text-sm text-text-secondary">{r}</span>
                     </li>
                   ))}
                 </ul>
@@ -249,7 +249,7 @@ export default function AdviceForm({ stock, onClose }) {
                 <h3 className="mb-2 text-sm font-semibold uppercase tracking-wider text-text-muted">
                   Next Step
                 </h3>
-                <div className="rounded-xl border border-accent/30 bg-accent/5 p-4">
+                <div className="card-base border-accent/20 bg-accent-soft/20 p-4">
                   <p className="text-sm font-medium text-accent">
                     {advice.next_step}
                   </p>
@@ -259,7 +259,7 @@ export default function AdviceForm({ stock, onClose }) {
               {/* Back button */}
               <button
                 onClick={handleClose}
-                className="w-full rounded-lg border border-border py-3 text-sm font-medium text-text-muted transition-colors hover:border-accent hover:text-accent"
+                className="w-full rounded-full border border-accent py-3 text-sm font-semibold text-accent transition-all hover:-translate-y-px hover:bg-accent hover:text-white hover:shadow-md"
               >
                 Back to Watchlist
               </button>

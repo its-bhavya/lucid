@@ -1,19 +1,49 @@
 @import "tailwindcss";
 
 @theme {
-  --color-background: #0A0A0F;
-  --color-surface: #13131A;
-  --color-card: #1C1C27;
-  --color-border: #2A2A3A;
-  --color-accent: #6C63FF;
-  --color-accent-green: #00D4AA;
-  --color-accent-red: #FF4D6A;
-  --color-text-primary: #F0F0FF;
-  --color-text-muted: #8888AA;
+  --color-background: #EEF4FB;
+  --color-surface: #F7FAFD;
+  --color-card: #FFFFFF;
+  --color-card-hover: #F0F6FF;
+  --color-border: #D6E4F0;
+  --color-accent: #2C5F8A;
+  --color-accent-light: #4A90C4;
+  --color-accent-soft: #C8DFF0;
+  --color-text-primary: #1A2E42;
+  --color-text-secondary: #4A6580;
+  --color-text-muted: #8AA0B8;
+  --color-green: #2E7D5E;
+  --color-red: #C0392B;
+  --color-yellow: #B8860B;
+  --color-purple: #5B4FCF;
+
+  --font-heading: "Playfair Display", Georgia, serif;
+  --font-body: "Inter", system-ui, sans-serif;
+  --font-mono: "DM Mono", "Fira Code", monospace;
+
+  --shadow-card: 0 2px 12px rgba(44, 95, 138, 0.06);
+  --shadow-card-hover: 0 8px 24px rgba(44, 95, 138, 0.10);
 }
 
 body {
   background-color: var(--color-background);
   color: var(--color-text-primary);
-  font-family: "Inter", system-ui, sans-serif;
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Utility classes for the design system */
+.card-base {
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-card);
+}
+
+.heading {
+  font-family: var(--font-heading);
+}
+
+.mono {
+  font-family: var(--font-mono);
 }

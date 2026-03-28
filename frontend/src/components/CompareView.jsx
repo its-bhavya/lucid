@@ -17,14 +17,13 @@ function cellHighlight(metric, v1, v2) {
   const higherBetter = BETTER_IS_HIGHER.some((m) => metric.includes(m));
 
   if (lowerBetter) {
-    return n1 < n2 ? ["text-accent-green", null] : [null, "text-accent-green"];
+    return n1 < n2 ? ["text-green font-bold", null] : [null, "text-green font-bold"];
   }
   if (higherBetter) {
-    return n1 > n2 ? ["text-accent-green", null] : [null, "text-accent-green"];
+    return n1 > n2 ? ["text-green font-bold", null] : [null, "text-green font-bold"];
   }
-  // Debt — lower is better
   if (metric.toLowerCase().includes("debt")) {
-    return n1 < n2 ? ["text-accent-green", null] : [null, "text-accent-green"];
+    return n1 < n2 ? ["text-green font-bold", null] : [null, "text-green font-bold"];
   }
   return [null, null];
 }
@@ -44,11 +43,11 @@ export default function CompareView({ stock1, stock2, comparison, onBack }) {
           Back to Watchlist
         </button>
 
-        <div className="flex items-center justify-between rounded-xl border border-border bg-card p-6">
+        <div className="card-base flex items-center justify-between p-6">
           <div className="text-center flex-1">
-            <p className="text-xl font-bold text-white">{stock1.name}</p>
-            <p className="text-sm font-medium text-accent">{stock1.ticker}</p>
-            <p className="mt-1 text-2xl font-bold text-white">
+            <p className="heading text-xl font-bold text-text-primary">{stock1.name}</p>
+            <p className="mono text-sm font-medium text-accent">{stock1.ticker}</p>
+            <p className="mono mt-1 text-2xl font-bold text-text-primary">
               {stock1.price != null ? `$${Number(stock1.price).toFixed(2)}` : "N/A"}
             </p>
           </div>
@@ -58,9 +57,9 @@ export default function CompareView({ stock1, stock2, comparison, onBack }) {
           </div>
 
           <div className="text-center flex-1">
-            <p className="text-xl font-bold text-white">{stock2.name}</p>
-            <p className="text-sm font-medium text-accent">{stock2.ticker}</p>
-            <p className="mt-1 text-2xl font-bold text-white">
+            <p className="heading text-xl font-bold text-text-primary">{stock2.name}</p>
+            <p className="mono text-sm font-medium text-accent">{stock2.ticker}</p>
+            <p className="mono mt-1 text-2xl font-bold text-text-primary">
               {stock2.price != null ? `$${Number(stock2.price).toFixed(2)}` : "N/A"}
             </p>
           </div>
@@ -72,17 +71,17 @@ export default function CompareView({ stock1, stock2, comparison, onBack }) {
         <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-text-muted">
           Side by Side
         </h3>
-        <div className="overflow-hidden rounded-xl border border-border">
+        <div className="card-base overflow-hidden">
           <table className="w-full">
             <thead>
               <tr className="border-b border-border bg-surface">
                 <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">
                   Metric
                 </th>
-                <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-text-muted">
+                <th className="mono px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-text-muted">
                   {stock1.ticker}
                 </th>
-                <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-text-muted">
+                <th className="mono px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-text-muted">
                   {stock2.ticker}
                 </th>
               </tr>
@@ -98,10 +97,10 @@ export default function CompareView({ stock1, stock2, comparison, onBack }) {
                     <td className="px-5 py-3 text-sm font-medium text-text-primary">
                       {row.metric}
                     </td>
-                    <td className={`px-5 py-3 text-right text-sm font-medium ${h1 || "text-text-primary"}`}>
+                    <td className={`mono px-5 py-3 text-right text-sm ${h1 || "text-text-secondary"}`}>
                       {row.stock1_value ?? "N/A"}
                     </td>
-                    <td className={`px-5 py-3 text-right text-sm font-medium ${h2 || "text-text-primary"}`}>
+                    <td className={`mono px-5 py-3 text-right text-sm ${h2 || "text-text-secondary"}`}>
                       {row.stock2_value ?? "N/A"}
                     </td>
                   </tr>
@@ -117,27 +116,29 @@ export default function CompareView({ stock1, stock2, comparison, onBack }) {
         <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-text-muted">
           Verdict
         </h3>
-        <p className="rounded-xl bg-card p-5 text-sm leading-relaxed text-text-primary">
-          {comparison.verdict}
-        </p>
+        <div className="card-base p-5">
+          <p className="text-sm leading-relaxed text-text-secondary">
+            {comparison.verdict}
+          </p>
+        </div>
       </section>
 
       {/* Pick cards */}
       <section className="mb-8">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div className="rounded-xl border border-accent-green/30 bg-accent-green/5 p-5">
-            <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-accent-green">
+          <div className="card-base border-green/20 bg-green/5 p-5">
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-green">
               If you want growth
             </p>
-            <p className="text-lg font-bold text-white">
+            <p className="heading text-lg font-bold text-text-primary">
               Choose {comparison.pick_if_growth}
             </p>
           </div>
-          <div className="rounded-xl border border-accent/30 bg-accent/5 p-5">
+          <div className="card-base border-accent/20 bg-accent-soft/30 p-5">
             <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-accent">
               If you want stability
             </p>
-            <p className="text-lg font-bold text-white">
+            <p className="heading text-lg font-bold text-text-primary">
               Choose {comparison.pick_if_stability}
             </p>
           </div>
@@ -148,7 +149,7 @@ export default function CompareView({ stock1, stock2, comparison, onBack }) {
       <div className="flex justify-center">
         <button
           onClick={onBack}
-          className="rounded-lg border border-border px-6 py-3 text-sm font-medium text-text-muted transition-colors hover:border-accent hover:text-accent"
+          className="rounded-full border border-accent px-6 py-3 text-sm font-semibold text-accent transition-all hover:-translate-y-px hover:bg-accent hover:text-white hover:shadow-md"
         >
           Back to Watchlist
         </button>

@@ -61,7 +61,6 @@ export default function Watchlist() {
       try {
         analysis = await analyzeStock(stock);
       } catch {
-        // Gemini failed — still add the card with stock data
         analysis = { _error: true };
       }
       setWatchlist((prev) => [{ stock, analysis }, ...prev]);
@@ -123,7 +122,6 @@ export default function Watchlist() {
     setCompareResult(null);
   }
 
-  // --- Full-page compare result ---
   if (compareResult) {
     return (
       <CompareView
@@ -135,7 +133,6 @@ export default function Watchlist() {
     );
   }
 
-  // --- Compare loading ---
   if (compareLoading) {
     return <LoadingSpinner message="Comparing stocks with AI..." />;
   }
@@ -161,14 +158,14 @@ export default function Watchlist() {
 
       {/* Compare mode banner */}
       {compareSource && (
-        <div className="mb-6 flex items-center justify-between rounded-xl border border-accent/30 bg-accent/5 px-5 py-3">
+        <div className="card-base mb-6 flex items-center justify-between border-accent/20 bg-accent-soft/20 px-5 py-3">
           <p className="text-sm text-accent">
             Select another stock to compare with{" "}
-            <span className="font-bold">{compareSource.stock.ticker}</span>
+            <span className="mono font-bold">{compareSource.stock.ticker}</span>
           </p>
           <button
             onClick={handleCancelCompare}
-            className="text-xs text-text-muted transition-colors hover:text-accent-red"
+            className="text-xs font-medium text-text-muted transition-colors hover:text-red"
           >
             Cancel
           </button>
@@ -182,12 +179,12 @@ export default function Watchlist() {
           value={ticker}
           onChange={(e) => setTicker(e.target.value)}
           placeholder="Enter ticker symbol (e.g. AAPL)"
-          className="flex-1 rounded-lg border border-border bg-surface px-4 py-3 text-sm text-text-primary placeholder-text-muted outline-none transition-colors focus:border-accent"
+          className="flex-1 rounded-full border border-border bg-card px-5 py-3 text-sm text-text-primary shadow-[var(--shadow-card)] placeholder-text-muted outline-none transition-all focus:border-accent focus:ring-2 focus:ring-accent/15"
         />
         <button
           type="submit"
           disabled={loading}
-          className="rounded-lg bg-accent px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-accent/80 disabled:opacity-50"
+          className="rounded-full bg-accent px-7 py-3 text-sm font-semibold text-white shadow-md transition-all hover:-translate-y-px hover:shadow-lg disabled:opacity-50"
         >
           Add
         </button>
@@ -195,7 +192,7 @@ export default function Watchlist() {
 
       {/* Error toast */}
       {error && (
-        <div className="mb-6 rounded-lg border border-accent-red/30 bg-accent-red/10 px-4 py-3 text-sm text-accent-red">
+        <div className="mb-6 card-base border-red/20 bg-red/5 px-4 py-3 text-sm text-red">
           {error}
         </div>
       )}
@@ -224,7 +221,7 @@ export default function Watchlist() {
           <div className="mt-8 flex justify-center">
             <button
               onClick={handleClear}
-              className="rounded-lg border border-border px-5 py-2 text-sm text-text-muted transition-colors hover:border-accent-red hover:text-accent-red"
+              className="rounded-full border border-border px-5 py-2 text-sm text-text-muted transition-all hover:-translate-y-px hover:border-red/40 hover:text-red"
             >
               Clear watchlist
             </button>
@@ -233,15 +230,14 @@ export default function Watchlist() {
       ) : (
         !loading && (
           <div className="flex flex-col items-center py-24">
-            {/* Search icon */}
-            <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-surface">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-text-muted">
+            <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-accent-soft/40">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-accent">
                 <circle cx="11" cy="11" r="8" />
                 <path d="m21 21-4.3-4.3" />
               </svg>
             </div>
-            <p className="text-lg font-medium text-text-muted">Add a ticker to get started</p>
-            <p className="mt-1 text-sm text-text-muted/50">
+            <p className="heading text-lg font-bold text-text-primary">Add a ticker to get started</p>
+            <p className="mt-1 text-sm text-text-muted">
               Search for a stock above or try one of these
             </p>
             <div className="mt-5 flex gap-2">
@@ -249,7 +245,7 @@ export default function Watchlist() {
                 <button
                   key={t}
                   onClick={() => { setTicker(t); addTicker(t); }}
-                  className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-text-primary transition-all duration-200 hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-lg hover:shadow-accent/5"
+                  className="mono card-base px-4 py-2 text-sm font-medium text-accent transition-all duration-200 hover:-translate-y-0.5 hover:border-accent-light/50 hover:shadow-[var(--shadow-card-hover)]"
                 >
                   Try {t}
                 </button>

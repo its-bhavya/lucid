@@ -133,10 +133,17 @@ async def _fetch_stock_data(ticker: str) -> dict:
     async with httpx.AsyncClient() as client:
         resp = await client.get(url, params=params, timeout=15)
 
-    if resp.status_code != 200 or not isinstance(resp.json(), dict):
+    if resp.status_code == 401:
+        raise HTTPException(status_code=500, detail="EODHD API key is invalid or missing")
+
+    try:
+        data = resp.json()
+    except Exception:
         raise HTTPException(status_code=404, detail=f"Ticker {ticker} not found")
 
-    data = resp.json()
+    if resp.status_code != 200 or not isinstance(data, dict):
+        raise HTTPException(status_code=404, detail=f"Ticker {ticker} not found")
+
     general = data.get("General", {})
     highlights = data.get("Highlights", {})
 
