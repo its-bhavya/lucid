@@ -1,13 +1,13 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Layout from "./components/Layout";
-import Watchlist from "./pages/Watchlist";
+import Dashboard from "./pages/Dashboard";
 
 function App() {
   return (
     <BrowserRouter>
       <Layout>
         <Routes>
-          <Route path="/" element={<Watchlist />} />
+          <Route path="/" element={<Dashboard />} />
         </Routes>
       </Layout>
     </BrowserRouter>

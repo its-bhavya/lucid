@@ -125,38 +125,37 @@ async def _ask_gemini(prompt: str) -> dict:
         raise HTTPException(status_code=500, detail=f"Gemini API error: {str(e)}")
 
 
-async def _fetch_stock_data(ticker: str) -> dict:
-    """Fetch and clean stock data from EODHD for a single ticker."""
+async def _fetch_raw_fundamentals(ticker: str) -> dict:
+    """Fetch raw EODHD fundamentals JSON for a ticker."""
     url = f"https://eodhd.com/api/fundamentals/{ticker}.US"
     params = {"api_token": EODHD_API_KEY, "fmt": "json"}
-
     async with httpx.AsyncClient() as client:
-        resp = await client.get(url, params=params, timeout=15)
-
+        resp = await client.get(url, params=params, timeout=20)
     if resp.status_code == 401:
         raise HTTPException(status_code=500, detail="EODHD API key is invalid or missing")
-
     try:
         data = resp.json()
     except Exception:
         raise HTTPException(status_code=404, detail=f"Ticker {ticker} not found")
-
-    if resp.status_code != 200 or not isinstance(data, dict):
+    if resp.status_code != 200 or not isinstance(data, dict) or not data.get("General"):
         raise HTTPException(status_code=404, detail=f"Ticker {ticker} not found")
+    return data
 
+
+async def _fetch_stock_data(ticker: str) -> dict:
+    """Fetch and clean stock data from EODHD for a single ticker."""
+    data = await _fetch_raw_fundamentals(ticker)
     general = data.get("General", {})
     highlights = data.get("Highlights", {})
-
-    if not general:
-        raise HTTPException(status_code=404, detail=f"Ticker {ticker} not found")
-
     description = general.get("Description", "") or ""
 
     return {
         "name": general.get("Name"),
         "ticker": general.get("Code"),
         "currency": general.get("CurrencyCode"),
+        "sector": general.get("Sector"),
         "price": highlights.get("WallStreetTargetPrice"),
+        "change_percent": highlights.get("QuarterlyRevenueGrowthYOY"),
         "pe_ratio": highlights.get("PERatio"),
         "eps": highlights.get("EarningsShare"),
         "dividend_yield": highlights.get("DividendYield"),
@@ -169,9 +168,65 @@ async def _fetch_stock_data(ticker: str) -> dict:
     }
 
 
+SUGGESTION_TICKERS = [
+    {"ticker": "AAPL", "category": "Large Cap"},
+    {"ticker": "MSFT", "category": "Large Cap"},
+    {"ticker": "NVDA", "category": "Growth"},
+    {"ticker": "AMZN", "category": "Growth"},
+    {"ticker": "JNJ", "category": "Value / Dividend"},
+    {"ticker": "KO", "category": "Value / Dividend"},
+]
+
+ONELINER_PROMPT = """\
+For each stock below, write a single sentence (max 15 words) describing what the company does in plain English. Return a JSON object mapping ticker to the sentence. No markdown.
+
+Stocks: {tickers}
+"""
+
+# In-memory cache for one-liner descriptions
+_description_cache: dict[str, str] = {}
+
+
 @app.get("/api/stock/{ticker}")
 async def get_stock(ticker: str):
     return await _fetch_stock_data(ticker)
+
+
+@app.get("/api/suggestions")
+async def get_suggestions():
+    tickers = [s["ticker"] for s in SUGGESTION_TICKERS]
+    category_map = {s["ticker"]: s["category"] for s in SUGGESTION_TICKERS}
+
+    # Fetch all stocks in parallel
+    results = await asyncio.gather(
+        *[_fetch_stock_data(t) for t in tickers],
+        return_exceptions=True,
+    )
+
+    stocks = []
+    valid_tickers = []
+    for i, r in enumerate(results):
+        if isinstance(r, Exception):
+            continue
+        r["category"] = category_map[tickers[i]]
+        stocks.append(r)
+        valid_tickers.append(tickers[i])
+
+    # Get one-liner AI descriptions (cached)
+    uncached = [t for t in valid_tickers if t not in _description_cache]
+    if uncached:
+        try:
+            prompt = ONELINER_PROMPT.format(tickers=", ".join(uncached))
+            descs = await _ask_gemini(prompt)
+            for t, desc in descs.items():
+                _description_cache[t.upper()] = desc
+        except Exception:
+            pass  # Fall back to truncated description
+
+    for s in stocks:
+        s["one_liner"] = _description_cache.get(s["ticker"], s.get("description", "")[:80])
+
+    return stocks
 
 
 @app.post("/api/analyze")
@@ -210,3 +265,253 @@ async def get_advice(req: AdviceRequest):
     )
     result = await _ask_gemini(prompt)
     return JSONResponse(content=result, media_type="application/json; charset=utf-8")
+
+
+# ---------------------------------------------------------------------------
+# Dynamic metrics endpoint
+# ---------------------------------------------------------------------------
+METRICS_PROMPT = """\
+Given these fundamentals for {ticker} in the {sector} sector, select the 6 most \
+relevant metrics an investor should know. For a bank, include NIM and Tier 1 Capital. \
+For a tech company, include R&D spend and ARR growth. For a retailer, include \
+same-store sales and inventory turnover. Return a JSON array of 6 objects:
+{{ "metric_name": string, "value": string, "unit": string, \
+"trend": "up"|"down"|"neutral", "finance_term_definition": string, \
+"why_it_matters": string }}
+
+Return ONLY valid JSON, no markdown or backticks.
+
+Fundamentals:
+{fundamentals}
+"""
+
+
+@app.get("/api/metrics/{ticker}")
+async def get_metrics(ticker: str):
+    data = await _fetch_raw_fundamentals(ticker)
+    sector = data.get("General", {}).get("Sector", "Unknown")
+    highlights = data.get("Highlights", {})
+    prompt = METRICS_PROMPT.format(
+        ticker=ticker,
+        sector=sector,
+        fundamentals=json.dumps(highlights, indent=2),
+    )
+    result = await _ask_gemini(prompt)
+    return JSONResponse(content=result, media_type="application/json; charset=utf-8")
+
+
+# ---------------------------------------------------------------------------
+# Historical financials for charts
+# ---------------------------------------------------------------------------
+@app.get("/api/financials/{ticker}")
+async def get_financials(ticker: str):
+    data = await _fetch_raw_fundamentals(ticker)
+    income = data.get("Financials", {}).get("Income_Statement", {}).get("yearly", {})
+    cashflow = data.get("Financials", {}).get("Cash_Flow", {}).get("yearly", {})
+
+    years = []
+    for date_key, row in list(income.items())[:4]:
+        year = date_key[:4]
+        cf_row = cashflow.get(date_key, {})
+        years.append({
+            "year": year,
+            "revenue": float(row.get("totalRevenue") or 0),
+            "net_income": float(row.get("netIncome") or 0),
+            "free_cash_flow": float(cf_row.get("freeCashFlow") or 0),
+        })
+
+    years.reverse()  # oldest first for chart
+    return years
+
+
+# ---------------------------------------------------------------------------
+# Health scores
+# ---------------------------------------------------------------------------
+HEALTH_PROMPT = """\
+Given these stock fundamentals, compute three health scores from 0 to 100:
+- profitability_score (based on profit margin, ROE, operating margin)
+- debt_safety_score (based on debt-to-equity, interest coverage, current ratio)
+- growth_score (based on revenue growth, earnings growth, FCF growth)
+
+Return a JSON object with exactly these three keys, each an integer 0-100.
+Return ONLY valid JSON, no markdown or backticks.
+
+Fundamentals:
+{fundamentals}
+"""
+
+
+@app.get("/api/health/{ticker}")
+async def get_health(ticker: str):
+    data = await _fetch_raw_fundamentals(ticker)
+    highlights = data.get("Highlights", {})
+    prompt = HEALTH_PROMPT.format(fundamentals=json.dumps(highlights, indent=2))
+    result = await _ask_gemini(prompt)
+    return JSONResponse(content=result, media_type="application/json; charset=utf-8")
+
+
+# ---------------------------------------------------------------------------
+# Revenue segments (for pie chart)
+# ---------------------------------------------------------------------------
+@app.get("/api/segments/{ticker}")
+async def get_segments(ticker: str):
+    data = await _fetch_raw_fundamentals(ticker)
+    general = data.get("General", {})
+    description = (general.get("Description", "") or "")[:500]
+    sector = general.get("Sector", "Unknown")
+
+    prompt = (
+        f"Based on your knowledge of {general.get('Name', ticker)} ({ticker}) in the "
+        f"{sector} sector, estimate their revenue breakdown by business segment. "
+        "Return a JSON array of objects: {\"segment\": string, \"percent\": number}. "
+        "Percentages must add to 100. Use 3-6 segments. "
+        "Return ONLY valid JSON, no markdown or backticks."
+    )
+    result = await _ask_gemini(prompt)
+    return JSONResponse(content=result, media_type="application/json; charset=utf-8")
+
+
+# ---------------------------------------------------------------------------
+# SEC filings intelligence
+# ---------------------------------------------------------------------------
+SEC_HEADERS = {"User-Agent": "Lucid contact@lucid.app", "Accept-Encoding": "gzip, deflate"}
+
+
+@app.get("/api/sec/{ticker}")
+async def get_sec_intelligence(ticker: str):
+    async with httpx.AsyncClient(timeout=15) as client:
+        # Step 1: look up CIK
+        search_resp = await client.get(
+            "https://efts.sec.gov/LATEST/search-index",
+            params={"q": ticker, "dateRange": "custom", "startdt": "2024-01-01"},
+            headers=SEC_HEADERS,
+        )
+
+        cik = None
+        if search_resp.status_code == 200:
+            try:
+                hits = search_resp.json().get("hits", {}).get("hits", [])
+                for hit in hits:
+                    src = hit.get("_source", {})
+                    if src.get("tickers") and ticker.upper() in [t.upper() for t in src["tickers"]]:
+                        cik = src.get("ciks", [None])[0]
+                        break
+            except Exception:
+                pass
+
+        # Fallback: use EODHD general data for CIK
+        if not cik:
+            try:
+                raw = await _fetch_raw_fundamentals(ticker)
+                cik = raw.get("General", {}).get("CIK")
+            except Exception:
+                pass
+
+        filing_text = ""
+        filing_date = None
+
+        if cik:
+            padded = str(cik).zfill(10)
+            sub_resp = await client.get(
+                f"https://data.sec.gov/submissions/CIK{padded}.json",
+                headers=SEC_HEADERS,
+            )
+            if sub_resp.status_code == 200:
+                filings = sub_resp.json().get("filings", {}).get("recent", {})
+                forms = filings.get("form", [])
+                accessions = filings.get("accessionNumber", [])
+                dates = filings.get("filingDate", [])
+                primary_docs = filings.get("primaryDocument", [])
+
+                for i, form in enumerate(forms):
+                    if form in ("10-K", "10-Q"):
+                        filing_date = dates[i] if i < len(dates) else None
+                        acc = accessions[i].replace("-", "") if i < len(accessions) else None
+                        doc = primary_docs[i] if i < len(primary_docs) else None
+                        if acc and doc:
+                            doc_url = f"https://www.sec.gov/Archives/edgar/data/{cik}/{acc}/{doc}"
+                            try:
+                                doc_resp = await client.get(doc_url, headers=SEC_HEADERS)
+                                if doc_resp.status_code == 200:
+                                    raw_text = doc_resp.text
+                                    # Extract MD&A-like section (rough heuristic)
+                                    lower = raw_text.lower()
+                                    start = lower.find("management")
+                                    if start == -1:
+                                        start = 0
+                                    filing_text = raw_text[start:start + 5000]
+                            except Exception:
+                                pass
+                        break
+
+    if not filing_text:
+        # Fallback: use Gemini's training knowledge
+        filing_text = f"No SEC filing text available. Use your knowledge of {ticker}."
+
+    prompt = (
+        f"From this MD&A excerpt for {ticker}, extract:\n"
+        "- segment_kpis: array of {{ segment, kpi_name, value, yoy_change, definition }}\n"
+        "- management_tone: positive/neutral/cautious\n"
+        "- key_risks: array of 3 strings\n"
+        "- key_opportunities: array of 3 strings\n"
+        "Return ONLY valid JSON, no markdown or backticks.\n\n"
+        f"Filing date: {filing_date or 'unknown'}\n"
+        f"Text:\n{filing_text[:4000]}"
+    )
+    result = await _ask_gemini(prompt)
+    if filing_date:
+        result["filing_date"] = filing_date
+    return JSONResponse(content=result, media_type="application/json; charset=utf-8")
+
+
+# ---------------------------------------------------------------------------
+# News with AI analysis
+# ---------------------------------------------------------------------------
+@app.get("/api/news/{ticker}")
+async def get_news(ticker: str):
+    url = "https://eodhd.com/api/news"
+    params = {"s": f"{ticker}.US", "limit": 5, "api_token": EODHD_API_KEY, "fmt": "json"}
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.get(url, params=params)
+
+    if resp.status_code != 200:
+        raise HTTPException(status_code=500, detail="Failed to fetch news")
+
+    try:
+        articles = resp.json()
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to parse news")
+
+    if not isinstance(articles, list) or not articles:
+        return []
+
+    headlines = [a.get("title", "") for a in articles]
+    prompt = (
+        f"For each headline about {ticker}, write one sentence explaining what it means "
+        "for a retail investor who owns this stock. Also classify sentiment as "
+        "positive, neutral, or negative.\n"
+        "Return a JSON array of objects: "
+        '{{ "plain_english_meaning": string, "sentiment": "positive"|"neutral"|"negative" }}\n'
+        "Return ONLY valid JSON, no markdown or backticks.\n\n"
+        f"Headlines:\n" + "\n".join(f"{i+1}. {h}" for i, h in enumerate(headlines))
+    )
+
+    try:
+        meanings = await _ask_gemini(prompt)
+    except Exception:
+        meanings = [{"plain_english_meaning": "", "sentiment": "neutral"}] * len(articles)
+
+    result = []
+    for i, article in enumerate(articles):
+        m = meanings[i] if i < len(meanings) else {}
+        result.append({
+            "headline": article.get("title", ""),
+            "source": article.get("source", ""),
+            "date": article.get("date", ""),
+            "url": article.get("link", ""),
+            "plain_english_meaning": m.get("plain_english_meaning", ""),
+            "sentiment": m.get("sentiment", "neutral"),
+        })
+
+    return result
