@@ -11,7 +11,26 @@
       "Bash(kill %1)",
       "Bash(curl -s http://localhost:8000/api/stock/XYZFAKE123)",
       "Bash(python -m json.tool)",
-      "Bash(taskkill //PID 28032 //F)"
+      "Bash(taskkill //PID 28032 //F)",
+      "Bash(netstat -ano)",
+      "Bash(taskkill //PID 2052 //F)",
+      "Bash(taskkill //PID 21404 //F)",
+      "Bash(taskkill //PID 2728 //F)",
+      "Bash(curl -s -X POST http://localhost:8000/api/compare -H \"Content-Type: application/json\" -d '{\"\"\"\"ticker1\"\"\"\":\"\"\"\"AAPL\"\"\"\",\"\"\"\"ticker2\"\"\"\":\"\"\"\"MSFT\"\"\"\"}')",
+      "Bash(curl:*)",
+      "Bash(taskkill //PID 30532 //F)",
+      "Bash(python -m json.tool /tmp/aapl.json)",
+      "Bash(taskkill //PID 20312 //F)",
+      "Bash(python -c \":*)",
+      "Bash(python:*)",
+      "Bash(taskkill //PID 20360 //F)",
+      "Bash(taskkill //F //IM python.exe)",
+      "Bash(taskkill //PID 32636 //F)",
+      "Bash(taskkill //F //IM uvicorn.exe)",
+      "Bash(taskkill //PID 10248 //F)",
+      "Bash(taskkill //PID 19212 //F)",
+      "Bash(taskkill:*)",
+      "Bash(git -C /c/Users/Bhavya/Desktop/projects/lucid remote -v)"
     ]
   }
 }
