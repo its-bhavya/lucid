@@ -103,6 +103,13 @@ export async function fetchHealth(ticker) {
   });
 }
 
+export async function fetchOhlcv(ticker) {
+  return cached(`ohlcv:${ticker}`, async () => {
+    const { data } = await api.get(`/api/ohlcv/${ticker}`);
+    return data;
+  });
+}
+
 export async function fetchStatistics(ticker) {
   return cached(`statistics:${ticker}`, async () => {
     const { data } = await api.get(`/api/statistics/${ticker}`);

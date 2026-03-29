@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip as ReTooltip, Legend,
-  BarChart, Bar, Cell,
+  BarChart, Bar, Cell, Area, AreaChart,
 } from "recharts";
-import { fetchMetrics, fetchFinancials, fetchHealth, fetchSec, fetchNews } from "../api";
+import { fetchMetrics, fetchFinancials, fetchHealth, fetchSec, fetchNews, fetchOhlcv } from "../api";
 import FinanceTerm from "./FinanceTerm";
 import MetricCard from "./MetricCard";
 import NewsCard from "./NewsCard";
@@ -57,9 +57,13 @@ function Section({ title, children, loading, error, onRetry, skeleton }) {
 
 export default function FullAnalysis({ stock, analysis, onClose }) {
   const [visible, setVisible] = useState(false);
+  const [showStats, setShowStats] = useState(false);
   const ticker = stock.ticker;
 
   // Async data + error states
+  const [ohlcv, setOhlcv] = useState(null);
+  const [ohlcvLoading, setOhlcvLoading] = useState(true);
+  const [ohlcvError, setOhlcvError] = useState(null);
   const [metrics, setMetrics] = useState(null);
   const [metricsLoading, setMetricsLoading] = useState(true);
   const [metricsError, setMetricsError] = useState(null);
@@ -89,6 +93,7 @@ export default function FullAnalysis({ stock, analysis, onClose }) {
   }, []);
 
   useEffect(() => {
+    loadEndpoint(fetchOhlcv, setOhlcv, setOhlcvLoading, setOhlcvError);
     loadEndpoint(fetchMetrics, setMetrics, setMetricsLoading, setMetricsError);
     loadEndpoint(fetchFinancials, setFinancials, setFinancialsLoading, setFinancialsError);
     loadEndpoint(fetchHealth, setHealth, setHealthLoading, setHealthError);
@@ -146,6 +151,63 @@ export default function FullAnalysis({ stock, analysis, onClose }) {
             </div>
           </div>
 
+          {/* ===== PRICE CHART ===== */}
+          <Section title="Price History (1 Year)" loading={ohlcvLoading} error={ohlcvError} onRetry={() => loadEndpoint(fetchOhlcv, setOhlcv, setOhlcvLoading, setOhlcvError)} skeleton={<SkeletonChart />}>
+            {ohlcv && ohlcv.length > 0 && (() => {
+              const first = ohlcv[0].close;
+              const last = ohlcv[ohlcv.length - 1].close;
+              const up = last >= first;
+              const strokeColor = up ? "#2E7D5E" : "#C0392B";
+              const fillColor = up ? "rgba(46,125,94,0.08)" : "rgba(192,57,43,0.08)";
+              return (
+                <div className="card-base p-4">
+                  <ResponsiveContainer width="100%" height={280}>
+                    <AreaChart data={ohlcv} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="priceGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor={strokeColor} stopOpacity={0.15} />
+                          <stop offset="100%" stopColor={strokeColor} stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#D6E4F0" />
+                      <XAxis
+                        dataKey="date"
+                        tick={{ fontSize: 10, fill: "#8AA0B8" }}
+                        tickFormatter={(d) => { const p = d.split("-"); return `${p[1]}/${p[2]}`; }}
+                        interval={Math.floor(ohlcv.length / 6)}
+                      />
+                      <YAxis
+                        tick={{ fontSize: 11, fill: "#8AA0B8" }}
+                        width={55}
+                        domain={["dataMin - 5", "dataMax + 5"]}
+                        tickFormatter={(v) => `$${v.toFixed(0)}`}
+                      />
+                      <ReTooltip
+                        contentStyle={{ borderRadius: 12, border: "1px solid #D6E4F0", fontSize: 12 }}
+                        formatter={(v, name) => [`$${Number(v).toFixed(2)}`, name === "close" ? "Close" : name]}
+                        labelFormatter={(d) => d}
+                      />
+                      <Area type="monotone" dataKey="close" stroke={strokeColor} strokeWidth={2} fill="url(#priceGrad)" dot={false} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                  {/* Volume bar below */}
+                  <ResponsiveContainer width="100%" height={60}>
+                    <BarChart data={ohlcv} margin={{ top: 0, right: 10, left: 10, bottom: 0 }}>
+                      <XAxis dataKey="date" hide />
+                      <YAxis hide />
+                      <ReTooltip
+                        contentStyle={{ borderRadius: 12, border: "1px solid #D6E4F0", fontSize: 11 }}
+                        formatter={(v) => [`${(v / 1e6).toFixed(1)}M`, "Volume"]}
+                        labelFormatter={(d) => d}
+                      />
+                      <Bar dataKey="volume" fill="#C8DFF0" radius={[2, 2, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              );
+            })()}
+          </Section>
+
           {/* ===== SECTION 2 — What They Do ===== */}
           <section className="fade-in mb-10">
             <h3 className="heading mb-4 text-base font-bold text-text-primary">What They Do</h3>
@@ -154,14 +216,43 @@ export default function FullAnalysis({ stock, analysis, onClose }) {
             </p>
           </section>
 
-          {/* ===== SECTION 3 — Key Metrics (dynamic) ===== */}
-          <Section title="Key Metrics" loading={metricsLoading} error={metricsError} onRetry={() => loadEndpoint(fetchMetrics, setMetrics, setMetricsLoading, setMetricsError)} skeleton={<div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">{Array.from({length:6}).map((_,i)=><SkeletonMetric key={i}/>)}</div>}>
-            {metrics && Array.isArray(metrics) && (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {metrics.map((m, i) => <MetricCard key={i} metric={m} />)}
-              </div>
+          {/* ===== SECTION 3 — Key Metrics + Statistics ===== */}
+          <section className="fade-in mb-10">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="heading text-base font-bold text-text-primary">
+                {showStats ? "Financial Statistics" : "Key Metrics"}
+              </h3>
+              <button
+                onClick={() => setShowStats(!showStats)}
+                className="flex items-center gap-1.5 rounded-full border border-accent px-3 py-1.5 text-[11px] font-semibold text-accent transition-all hover:-translate-y-px hover:bg-accent hover:text-white"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  {showStats ? (
+                    <><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></>
+                  ) : (
+                    <><path d="M3 12h18M3 6h18M3 18h18"/></>
+                  )}
+                </svg>
+                {showStats ? "Key Metrics" : "All Statistics"}
+              </button>
+            </div>
+
+            {showStats ? (
+              <StatisticsPanel ticker={ticker} />
+            ) : (
+              metricsLoading ? (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {Array.from({ length: 6 }).map((_, i) => <SkeletonMetric key={i} />)}
+                </div>
+              ) : metricsError ? (
+                <ErrorCard message={metricsError} onRetry={() => loadEndpoint(fetchMetrics, setMetrics, setMetricsLoading, setMetricsError)} />
+              ) : metrics && Array.isArray(metrics) ? (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {metrics.map((m, i) => <MetricCard key={i} metric={m} />)}
+                </div>
+              ) : null
             )}
-          </Section>
+          </section>
 
           {/* ===== SECTION 4 — Historical Performance ===== */}
           <Section title="Financial Trends" loading={financialsLoading} error={financialsError} onRetry={() => loadEndpoint(fetchFinancials, setFinancials, setFinancialsLoading, setFinancialsError)} skeleton={<SkeletonChart />}>

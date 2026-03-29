@@ -404,6 +404,62 @@ async def get_financials(ticker: str):
     return years
 
 
+_ohlcv_cache: dict[str, list] = {}
+
+
+@app.get("/api/ohlcv/{ticker}")
+async def get_ohlcv(ticker: str):
+    """Return 1 year of daily OHLCV data from EODHD."""
+    cache_key = ticker.upper()
+    if cache_key in _ohlcv_cache:
+        return _ohlcv_cache[cache_key]
+
+    from datetime import date, timedelta
+    today = date.today()
+    one_year_ago = today - timedelta(days=365)
+
+    url = f"https://eodhd.com/api/eod/{ticker}.US"
+    params = {
+        "api_token": EODHD_API_KEY,
+        "fmt": "json",
+        "period": "d",
+        "from": one_year_ago.isoformat(),
+        "to": today.isoformat(),
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            resp = await client.get(url, params=params)
+    except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.TimeoutException):
+        raise HTTPException(status_code=500, detail="Price data request timed out.")
+
+    if resp.status_code != 200:
+        raise HTTPException(status_code=500, detail="Failed to fetch price data")
+
+    try:
+        data = resp.json()
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to parse price data")
+
+    if not isinstance(data, list):
+        raise HTTPException(status_code=404, detail="No price data available")
+
+    result = [
+        {
+            "date": d["date"],
+            "open": d["open"],
+            "high": d["high"],
+            "low": d["low"],
+            "close": d["adjusted_close"],
+            "volume": d["volume"],
+        }
+        for d in data
+    ]
+
+    _ohlcv_cache[cache_key] = result
+    return result
+
+
 @app.get("/api/statistics/{ticker}")
 async def get_statistics(ticker: str):
     """Return organized financial statistics from EODHD. No Gemini, all real data."""
