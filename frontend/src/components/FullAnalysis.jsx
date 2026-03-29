@@ -3,7 +3,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip as ReTooltip, Legend,
   BarChart, Bar, Cell, Area, AreaChart,
 } from "recharts";
-import { fetchMetrics, fetchFinancials, fetchHealth, fetchSec, fetchNews, fetchOhlcv } from "../api";
+import { fetchMetrics, fetchFinancials, fetchSec, fetchNews, fetchOhlcv } from "../api";
 import FinanceTerm from "./FinanceTerm";
 import MetricCard from "./MetricCard";
 import NewsCard from "./NewsCard";
@@ -29,18 +29,6 @@ function billionFormatter(value) {
   if (Math.abs(value) >= 1e9) return `$${(value / 1e9).toFixed(1)}B`;
   if (Math.abs(value) >= 1e6) return `$${(value / 1e6).toFixed(0)}M`;
   return `$${value}`;
-}
-
-function scoreColor(score) {
-  if (score >= 70) return "bg-green";
-  if (score >= 40) return "bg-yellow";
-  return "bg-red";
-}
-
-function scoreLabel(score) {
-  if (score >= 70) return "text-green";
-  if (score >= 40) return "text-yellow";
-  return "text-red";
 }
 
 // Section wrapper with loading/error/empty
@@ -70,9 +58,6 @@ export default function FullAnalysis({ stock, analysis, onClose }) {
   const [financials, setFinancials] = useState(null);
   const [financialsLoading, setFinancialsLoading] = useState(true);
   const [financialsError, setFinancialsError] = useState(null);
-  const [health, setHealth] = useState(null);
-  const [healthLoading, setHealthLoading] = useState(true);
-  const [healthError, setHealthError] = useState(null);
   const [sec, setSec] = useState(null);
   const [secLoading, setSecLoading] = useState(true);
   const [secError, setSecError] = useState(null);
@@ -96,7 +81,6 @@ export default function FullAnalysis({ stock, analysis, onClose }) {
     loadEndpoint(fetchOhlcv, setOhlcv, setOhlcvLoading, setOhlcvError);
     loadEndpoint(fetchMetrics, setMetrics, setMetricsLoading, setMetricsError);
     loadEndpoint(fetchFinancials, setFinancials, setFinancialsLoading, setFinancialsError);
-    loadEndpoint(fetchHealth, setHealth, setHealthLoading, setHealthError);
     loadEndpoint(fetchSec, setSec, setSecLoading, setSecError);
     loadEndpoint(fetchNews, setNews, setNewsLoading, setNewsError);
   }, [ticker]);
@@ -274,36 +258,6 @@ export default function FullAnalysis({ stock, analysis, onClose }) {
             )}
           </Section>
 
-          {/* ===== SECTION 5 — Health Check ===== */}
-          <Section title="Health Check" loading={healthLoading} error={healthError} onRetry={() => loadEndpoint(fetchHealth, setHealth, setHealthLoading, setHealthError)}>
-            {health && (
-              <div className="space-y-4">
-                {[
-                  { label: "Profitability Score", key: "profitability_score", def: "How effectively the company turns revenue into profit." },
-                  { label: "Debt Safety Score", key: "debt_safety_score", def: "How well the company can handle its debt obligations." },
-                  { label: "Growth Score", key: "growth_score", def: "How fast the company is expanding revenue and earnings." },
-                ].map(({ label, key, def }) => {
-                  const score = health[key] ?? 0;
-                  return (
-                    <div key={key}>
-                      <div className="mb-1.5 flex items-center justify-between">
-                        <p className="text-sm font-medium text-text-primary">
-                          <FinanceTerm term={label} definition={def} />
-                        </p>
-                        <span className={`mono text-sm font-bold ${scoreLabel(score)}`}>{score}</span>
-                      </div>
-                      <div className="h-3 w-full overflow-hidden rounded-full bg-surface">
-                        <div
-                          className={`h-full rounded-full transition-all duration-500 ${scoreColor(score)}`}
-                          style={{ width: `${Math.min(score, 100)}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </Section>
 
           {/* ===== SECTION 6 — SEC Filings Intelligence ===== */}
           <Section title="From the Latest SEC Filing" loading={secLoading} error={secError} onRetry={() => loadEndpoint(fetchSec, setSec, setSecLoading, setSecError)}>

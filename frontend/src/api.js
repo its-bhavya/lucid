@@ -96,13 +96,6 @@ export async function fetchFinancials(ticker) {
   });
 }
 
-export async function fetchHealth(ticker) {
-  return cached(`health:${ticker}`, async () => {
-    const { data } = await api.get(`/api/health/${ticker}`);
-    return data;
-  });
-}
-
 export async function fetchOhlcv(ticker) {
   return cached(`ohlcv:${ticker}`, async () => {
     const { data } = await api.get(`/api/ohlcv/${ticker}`);
