@@ -1,4 +1,5 @@
 import FinanceTerm from "./FinanceTerm";
+import wrapFinanceTerms from "../utils/wrapFinanceTerms";
 
 function formatPercent(n) {
   if (n == null) return "N/A";
@@ -77,7 +78,7 @@ export default function SuggestionCard({ stock, onAdd, onViewAnalysis, isInWatch
       {/* One-liner */}
       {stock.one_liner && (
         <p className="mb-3 text-xs leading-relaxed text-text-secondary">
-          {stock.one_liner}
+          {wrapFinanceTerms(stock.one_liner)}
         </p>
       )}
 

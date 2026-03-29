@@ -7,6 +7,7 @@ import {
 import { fetchCompareData } from "../api";
 import FinanceTerm from "./FinanceTerm";
 import LoadingSpinner from "./LoadingSpinner";
+import wrapFinanceTerms from "../utils/wrapFinanceTerms";
 
 const COLOR1 = "#2C5F8A"; // accent navy
 const COLOR2 = "#5B4FCF"; // purple
@@ -284,7 +285,7 @@ export default function CompareView({ stock1, stock2, comparison, onBack }) {
 
         {/* Overall verdict */}
         <div className="card-base p-5">
-          <p className="text-sm leading-relaxed text-text-secondary">{comparison.verdict}</p>
+          <p className="text-sm leading-relaxed text-text-secondary">{wrapFinanceTerms(comparison.verdict)}</p>
         </div>
       </section>
 

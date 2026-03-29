@@ -1,3 +1,5 @@
+import GlossaryDrawer from "./GlossaryDrawer";
+
 export default function Layout({ children }) {
   return (
     <div className="min-h-screen bg-background">
@@ -10,6 +12,7 @@ export default function Layout({ children }) {
       <main className="mx-auto max-w-[1100px] px-6 py-8">
         {children}
       </main>
+      <GlossaryDrawer />
     </div>
   );
 }

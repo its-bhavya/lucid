@@ -1,3 +1,5 @@
+import wrapFinanceTerms from "../utils/wrapFinanceTerms";
+
 const SENTIMENT_DOT = {
   positive: "bg-green",
   neutral: "bg-text-muted",
@@ -36,7 +38,7 @@ export default function NewsCard({ article }) {
           <div className="mt-2 border-l-2 border-accent-soft pl-3">
             <p className="text-[11px] font-medium uppercase tracking-wider text-text-muted">What this means</p>
             <p className="mt-0.5 text-xs italic leading-relaxed text-text-secondary">
-              {article.plain_english_meaning}
+              {wrapFinanceTerms(article.plain_english_meaning)}
             </p>
           </div>
         )}

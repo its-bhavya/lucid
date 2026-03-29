@@ -9,6 +9,7 @@ import FinanceTerm from "./FinanceTerm";
 import MetricCard from "./MetricCard";
 import NewsCard from "./NewsCard";
 import LoadingSpinner from "./LoadingSpinner";
+import wrapFinanceTerms from "../utils/wrapFinanceTerms";
 
 const VERDICT_STYLES = {
   UNDERVALUED: "bg-green/10 text-green border-green/20",
@@ -143,7 +144,7 @@ export default function FullAnalysis({ stock, analysis, onClose }) {
           {/* ===== SECTION 2 — What They Do + Pie ===== */}
           <Section title="What They Do" loading={segmentsLoading}>
             <p className="mb-5 text-sm leading-relaxed text-text-secondary">
-              {analysis?.what_they_do || stock.description}
+              {wrapFinanceTerms(analysis?.what_they_do || stock.description)}
             </p>
             {segments && Array.isArray(segments) && segments.length > 0 && (
               <div className="flex flex-col items-center">
@@ -324,7 +325,7 @@ export default function FullAnalysis({ stock, analysis, onClose }) {
             <section className="mb-4">
               <div className={`rounded-2xl border p-6 text-center ${verdictStyle}`}>
                 <p className="heading text-2xl font-bold">{analysis.verdict}</p>
-                <p className="mx-auto mt-2 max-w-lg text-sm opacity-80">{analysis.verdict_reason}</p>
+                <p className="mx-auto mt-2 max-w-lg text-sm opacity-80">{wrapFinanceTerms(analysis.verdict_reason)}</p>
               </div>
             </section>
           )}

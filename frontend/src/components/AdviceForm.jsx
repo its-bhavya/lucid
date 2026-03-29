@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { getAdvice } from "../api";
 import LoadingSpinner from "./LoadingSpinner";
+import wrapFinanceTerms from "../utils/wrapFinanceTerms";
 
 const RISK_LEVELS = ["Conservative", "Moderate", "Aggressive"];
 const TIME_OPTIONS = ["1 year", "3 years", "5-10 years", "10+ years"];
@@ -224,7 +225,7 @@ export default function AdviceForm({ stock, onClose }) {
                 </h3>
                 <div className="card-base p-4">
                   <p className="text-sm leading-relaxed text-text-secondary">
-                    {advice.reasoning}
+                    {wrapFinanceTerms(advice.reasoning)}
                   </p>
                 </div>
               </div>
@@ -238,7 +239,7 @@ export default function AdviceForm({ stock, onClose }) {
                   {advice.risks?.map((r, i) => (
                     <li key={i} className="flex items-start gap-2 rounded-xl bg-surface px-4 py-3">
                       <span className="mt-0.5 text-red">&#x2022;</span>
-                      <span className="text-sm text-text-secondary">{r}</span>
+                      <span className="text-sm text-text-secondary">{wrapFinanceTerms(r)}</span>
                     </li>
                   ))}
                 </ul>
@@ -251,7 +252,7 @@ export default function AdviceForm({ stock, onClose }) {
                 </h3>
                 <div className="card-base border-accent/20 bg-accent-soft/20 p-4">
                   <p className="text-sm font-medium text-accent">
-                    {advice.next_step}
+                    {wrapFinanceTerms(advice.next_step)}
                   </p>
                 </div>
               </div>
