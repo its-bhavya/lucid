@@ -29,6 +29,11 @@ export async function getAdvice(stockData, profile) {
   return data;
 }
 
+export async function fetchCompareData(ticker1, ticker2) {
+  const { data } = await api.get(`/api/compare-data/${ticker1}/${ticker2}`);
+  return data;
+}
+
 export async function fetchMetrics(ticker) {
   const { data } = await api.get(`/api/metrics/${ticker}`);
   return data;

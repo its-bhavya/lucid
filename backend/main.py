@@ -42,10 +42,12 @@ Stock data:
 
 COMPARE_PROMPT = """\
 Compare these two stocks. Return a JSON object with exactly these keys:
-- table: array of {{ metric, stock1_value, stock2_value }} for P/E, Growth, Margin, Debt, Dividend
+- table: array of {{ metric, stock1_value, stock2_value }} for P/E, EPS, Dividend Yield, Debt/Equity, Revenue Growth
+- radar: {{ stock1: {{ valuation, growth, profitability, safety, dividend }}, stock2: {{ valuation, growth, profitability, safety, dividend }} }} — each a score 0-100
+- margins: {{ stock1: {{ gross_margin, operating_margin, net_margin, fcf_margin }}, stock2: {{ gross_margin, operating_margin, net_margin, fcf_margin }} }} — each a percentage number (e.g. 27.5)
 - verdict: 2-3 sentence plain English comparison
-- pick_if_growth: ticker symbol
-- pick_if_stability: ticker symbol
+- pick_if_growth: {{ ticker: string, reasons: array of 2-3 short strings }}
+- pick_if_stability: {{ ticker: string, reasons: array of 2-3 short strings }}
 
 Return ONLY valid JSON, no markdown or backticks.
 
@@ -229,15 +231,30 @@ async def get_suggestions():
     return stocks
 
 
+_analyze_cache: dict[str, dict] = {}
+
+
 @app.post("/api/analyze")
 async def analyze_stock(req: AnalyzeRequest):
+    ticker = req.stock_data.get("ticker", "")
+    if ticker and ticker in _analyze_cache:
+        return JSONResponse(content=_analyze_cache[ticker], media_type="application/json; charset=utf-8")
     prompt = ANALYZE_PROMPT + json.dumps(req.stock_data, indent=2)
     result = await _ask_gemini(prompt)
+    if ticker:
+        _analyze_cache[ticker] = result
     return JSONResponse(content=result, media_type="application/json; charset=utf-8")
+
+
+_compare_cache: dict[str, dict] = {}
 
 
 @app.post("/api/compare")
 async def compare_stocks(req: CompareRequest):
+    cache_key = f"{req.ticker1.upper()}:{req.ticker2.upper()}"
+    if cache_key in _compare_cache:
+        return JSONResponse(content=_compare_cache[cache_key], media_type="application/json; charset=utf-8")
+
     results = await asyncio.gather(
         _fetch_stock_data(req.ticker1),
         _fetch_stock_data(req.ticker2),
@@ -254,7 +271,47 @@ async def compare_stocks(req: CompareRequest):
         stock2=json.dumps(stock2, indent=2),
     )
     result = await _ask_gemini(prompt)
+    _compare_cache[cache_key] = result
     return JSONResponse(content=result, media_type="application/json; charset=utf-8")
+
+
+def _extract_revenue_history(raw_data: dict) -> list:
+    """Extract last 4 years of annual revenue from raw EODHD data."""
+    income = raw_data.get("Financials", {}).get("Income_Statement", {}).get("yearly", {})
+    years = []
+    for date_key, row in list(income.items())[:4]:
+        years.append({
+            "year": date_key[:4],
+            "revenue": float(row.get("totalRevenue") or 0),
+        })
+    years.reverse()
+    return years
+
+
+@app.get("/api/compare-data/{ticker1}/{ticker2}")
+async def get_compare_data(ticker1: str, ticker2: str):
+    """Return historical revenue for both tickers for charts."""
+    raw1, raw2 = await asyncio.gather(
+        _fetch_raw_fundamentals(ticker1),
+        _fetch_raw_fundamentals(ticker2),
+    )
+    rev1 = _extract_revenue_history(raw1)
+    rev2 = _extract_revenue_history(raw2)
+
+    # Merge into chart-friendly format
+    years_set = sorted({r["year"] for r in rev1 + rev2})
+    rev1_map = {r["year"]: r["revenue"] for r in rev1}
+    rev2_map = {r["year"]: r["revenue"] for r in rev2}
+
+    chart_data = []
+    for y in years_set:
+        chart_data.append({
+            "year": y,
+            "stock1_revenue": rev1_map.get(y, 0),
+            "stock2_revenue": rev2_map.get(y, 0),
+        })
+
+    return chart_data
 
 
 @app.post("/api/advice")
@@ -286,8 +343,14 @@ Fundamentals:
 """
 
 
+_gemini_cache: dict[str, dict | list] = {}
+
+
 @app.get("/api/metrics/{ticker}")
 async def get_metrics(ticker: str):
+    cache_key = f"metrics:{ticker.upper()}"
+    if cache_key in _gemini_cache:
+        return JSONResponse(content=_gemini_cache[cache_key], media_type="application/json; charset=utf-8")
     data = await _fetch_raw_fundamentals(ticker)
     sector = data.get("General", {}).get("Sector", "Unknown")
     highlights = data.get("Highlights", {})
@@ -297,6 +360,7 @@ async def get_metrics(ticker: str):
         fundamentals=json.dumps(highlights, indent=2),
     )
     result = await _ask_gemini(prompt)
+    _gemini_cache[cache_key] = result
     return JSONResponse(content=result, media_type="application/json; charset=utf-8")
 
 
@@ -343,10 +407,14 @@ Fundamentals:
 
 @app.get("/api/health/{ticker}")
 async def get_health(ticker: str):
+    cache_key = f"health:{ticker.upper()}"
+    if cache_key in _gemini_cache:
+        return JSONResponse(content=_gemini_cache[cache_key], media_type="application/json; charset=utf-8")
     data = await _fetch_raw_fundamentals(ticker)
     highlights = data.get("Highlights", {})
     prompt = HEALTH_PROMPT.format(fundamentals=json.dumps(highlights, indent=2))
     result = await _ask_gemini(prompt)
+    _gemini_cache[cache_key] = result
     return JSONResponse(content=result, media_type="application/json; charset=utf-8")
 
 
@@ -355,9 +423,11 @@ async def get_health(ticker: str):
 # ---------------------------------------------------------------------------
 @app.get("/api/segments/{ticker}")
 async def get_segments(ticker: str):
+    cache_key = f"segments:{ticker.upper()}"
+    if cache_key in _gemini_cache:
+        return JSONResponse(content=_gemini_cache[cache_key], media_type="application/json; charset=utf-8")
     data = await _fetch_raw_fundamentals(ticker)
     general = data.get("General", {})
-    description = (general.get("Description", "") or "")[:500]
     sector = general.get("Sector", "Unknown")
 
     prompt = (
@@ -368,6 +438,7 @@ async def get_segments(ticker: str):
         "Return ONLY valid JSON, no markdown or backticks."
     )
     result = await _ask_gemini(prompt)
+    _gemini_cache[cache_key] = result
     return JSONResponse(content=result, media_type="application/json; charset=utf-8")
 
 
@@ -379,6 +450,9 @@ SEC_HEADERS = {"User-Agent": "Lucid contact@lucid.app", "Accept-Encoding": "gzip
 
 @app.get("/api/sec/{ticker}")
 async def get_sec_intelligence(ticker: str):
+    cache_key = f"sec:{ticker.upper()}"
+    if cache_key in _gemini_cache:
+        return JSONResponse(content=_gemini_cache[cache_key], media_type="application/json; charset=utf-8")
     async with httpx.AsyncClient(timeout=15) as client:
         # Step 1: look up CIK
         search_resp = await client.get(
@@ -461,6 +535,7 @@ async def get_sec_intelligence(ticker: str):
     result = await _ask_gemini(prompt)
     if filing_date:
         result["filing_date"] = filing_date
+    _gemini_cache[cache_key] = result
     return JSONResponse(content=result, media_type="application/json; charset=utf-8")
 
 
@@ -469,6 +544,9 @@ async def get_sec_intelligence(ticker: str):
 # ---------------------------------------------------------------------------
 @app.get("/api/news/{ticker}")
 async def get_news(ticker: str):
+    cache_key = f"news:{ticker.upper()}"
+    if cache_key in _gemini_cache:
+        return JSONResponse(content=_gemini_cache[cache_key], media_type="application/json; charset=utf-8")
     url = "https://eodhd.com/api/news"
     params = {"s": f"{ticker}.US", "limit": 5, "api_token": EODHD_API_KEY, "fmt": "json"}
 
@@ -514,4 +592,5 @@ async def get_news(ticker: str):
             "sentiment": m.get("sentiment", "neutral"),
         })
 
+    _gemini_cache[cache_key] = result
     return result
