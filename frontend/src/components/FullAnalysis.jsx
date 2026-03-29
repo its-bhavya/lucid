@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
 import {
-  PieChart, Pie, Cell, Tooltip as ReTooltip, Legend,
-  LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer,
-  Legend as LineLegend,
+  LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip as ReTooltip, Legend,
+  BarChart, Bar, Cell,
 } from "recharts";
-import { fetchMetrics, fetchFinancials, fetchHealth, fetchSegments, fetchSec, fetchNews } from "../api";
+import { fetchMetrics, fetchFinancials, fetchHealth, fetchSec, fetchNews } from "../api";
 import FinanceTerm from "./FinanceTerm";
 import MetricCard from "./MetricCard";
 import NewsCard from "./NewsCard";
-import LoadingSpinner from "./LoadingSpinner";
+import ErrorCard from "./ErrorCard";
+import { SkeletonMetric, SkeletonChart, SkeletonSection } from "./Skeleton";
+import StatisticsPanel from "./StatisticsPanel";
 import wrapFinanceTerms from "../utils/wrapFinanceTerms";
 
 const VERDICT_STYLES = {
@@ -17,8 +18,6 @@ const VERDICT_STYLES = {
   "EXPENSIVE BUT GROWING": "bg-purple/10 text-purple border-purple/20",
   OVERVALUED: "bg-red/10 text-red border-red/20",
 };
-
-const PIE_COLORS = ["#2C5F8A", "#4A90C4", "#5B4FCF", "#2E7D5E", "#B8860B", "#C0392B"];
 
 const TONE_STYLES = {
   positive: "bg-green/10 text-green border-green/20",
@@ -44,13 +43,13 @@ function scoreLabel(score) {
   return "text-red";
 }
 
-// Section wrapper
-function Section({ title, children, loading, error }) {
+// Section wrapper with loading/error/empty
+function Section({ title, children, loading, error, onRetry, skeleton }) {
   return (
-    <section className="mb-10">
+    <section className="fade-in mb-10">
       <h3 className="heading mb-4 text-base font-bold text-text-primary">{title}</h3>
-      {loading ? <LoadingSpinner message="Loading..." /> : error ? (
-        <p className="text-sm italic text-text-muted">{error}</p>
+      {loading ? (skeleton || <SkeletonSection />) : error ? (
+        <ErrorCard message={error} onRetry={onRetry} />
       ) : children}
     </section>
   );
@@ -60,19 +59,27 @@ export default function FullAnalysis({ stock, analysis, onClose }) {
   const [visible, setVisible] = useState(false);
   const ticker = stock.ticker;
 
-  // Async data
+  // Async data + error states
   const [metrics, setMetrics] = useState(null);
   const [metricsLoading, setMetricsLoading] = useState(true);
+  const [metricsError, setMetricsError] = useState(null);
   const [financials, setFinancials] = useState(null);
   const [financialsLoading, setFinancialsLoading] = useState(true);
+  const [financialsError, setFinancialsError] = useState(null);
   const [health, setHealth] = useState(null);
   const [healthLoading, setHealthLoading] = useState(true);
-  const [segments, setSegments] = useState(null);
-  const [segmentsLoading, setSegmentsLoading] = useState(true);
+  const [healthError, setHealthError] = useState(null);
   const [sec, setSec] = useState(null);
   const [secLoading, setSecLoading] = useState(true);
+  const [secError, setSecError] = useState(null);
   const [news, setNews] = useState(null);
   const [newsLoading, setNewsLoading] = useState(true);
+  const [newsError, setNewsError] = useState(null);
+
+  function loadEndpoint(fn, setData, setLoading, setErr) {
+    setLoading(true); setErr(null);
+    fn(ticker).then(setData).catch(() => setErr("Couldn't load this. Try again.")).finally(() => setLoading(false));
+  }
 
   useEffect(() => {
     requestAnimationFrame(() => setVisible(true));
@@ -81,14 +88,12 @@ export default function FullAnalysis({ stock, analysis, onClose }) {
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
-  // Fetch all data in parallel on mount
   useEffect(() => {
-    fetchMetrics(ticker).then(setMetrics).catch(() => {}).finally(() => setMetricsLoading(false));
-    fetchFinancials(ticker).then(setFinancials).catch(() => {}).finally(() => setFinancialsLoading(false));
-    fetchHealth(ticker).then(setHealth).catch(() => {}).finally(() => setHealthLoading(false));
-    fetchSegments(ticker).then(setSegments).catch(() => {}).finally(() => setSegmentsLoading(false));
-    fetchSec(ticker).then(setSec).catch(() => {}).finally(() => setSecLoading(false));
-    fetchNews(ticker).then(setNews).catch(() => {}).finally(() => setNewsLoading(false));
+    loadEndpoint(fetchMetrics, setMetrics, setMetricsLoading, setMetricsError);
+    loadEndpoint(fetchFinancials, setFinancials, setFinancialsLoading, setFinancialsError);
+    loadEndpoint(fetchHealth, setHealth, setHealthLoading, setHealthError);
+    loadEndpoint(fetchSec, setSec, setSecLoading, setSecError);
+    loadEndpoint(fetchNews, setNews, setNewsLoading, setNewsError);
   }, [ticker]);
 
   function handleClose() {
@@ -125,7 +130,7 @@ export default function FullAnalysis({ stock, analysis, onClose }) {
                 <span className="mono rounded-md bg-accent/10 px-2 py-0.5 text-sm font-bold text-accent">{ticker}</span>
                 {stock.sector && <span className="rounded-full bg-surface px-2.5 py-0.5 text-[11px] font-medium text-text-secondary">{stock.sector}</span>}
                 {analysis?.verdict && (
-                  <span className={`rounded-full border px-3 py-0.5 text-[11px] font-semibold ${verdictStyle}`}>{analysis.verdict}</span>
+                  <span className={`verdict-pulse rounded-full border px-3 py-0.5 text-[11px] font-semibold ${verdictStyle}`}>{analysis.verdict}</span>
                 )}
               </div>
             </div>
@@ -141,41 +146,16 @@ export default function FullAnalysis({ stock, analysis, onClose }) {
             </div>
           </div>
 
-          {/* ===== SECTION 2 — What They Do + Pie ===== */}
-          <Section title="What They Do" loading={segmentsLoading}>
-            <p className="mb-5 text-sm leading-relaxed text-text-secondary">
+          {/* ===== SECTION 2 — What They Do ===== */}
+          <section className="fade-in mb-10">
+            <h3 className="heading mb-4 text-base font-bold text-text-primary">What They Do</h3>
+            <p className="text-sm leading-relaxed text-text-secondary">
               {wrapFinanceTerms(analysis?.what_they_do || stock.description)}
             </p>
-            {segments && Array.isArray(segments) && segments.length > 0 && (
-              <div className="flex flex-col items-center">
-                <ResponsiveContainer width="100%" height={260}>
-                  <PieChart>
-                    <Pie
-                      data={segments}
-                      dataKey="percent"
-                      nameKey="segment"
-                      cx="50%"
-                      cy="50%"
-                      outerRadius={100}
-                      innerRadius={50}
-                      paddingAngle={2}
-                      label={({ segment, percent }) => `${segment} ${percent}%`}
-                      labelLine={false}
-                      style={{ fontSize: 11 }}
-                    >
-                      {segments.map((_, i) => (
-                        <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <ReTooltip formatter={(value, name) => [`${value}%`, name]} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-          </Section>
+          </section>
 
           {/* ===== SECTION 3 — Key Metrics (dynamic) ===== */}
-          <Section title="Key Metrics" loading={metricsLoading} error={!metricsLoading && !metrics ? "Metrics unavailable" : null}>
+          <Section title="Key Metrics" loading={metricsLoading} error={metricsError} onRetry={() => loadEndpoint(fetchMetrics, setMetrics, setMetricsLoading, setMetricsError)} skeleton={<div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">{Array.from({length:6}).map((_,i)=><SkeletonMetric key={i}/>)}</div>}>
             {metrics && Array.isArray(metrics) && (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {metrics.map((m, i) => <MetricCard key={i} metric={m} />)}
@@ -184,7 +164,7 @@ export default function FullAnalysis({ stock, analysis, onClose }) {
           </Section>
 
           {/* ===== SECTION 4 — Historical Performance ===== */}
-          <Section title="Financial Trends" loading={financialsLoading} error={!financialsLoading && !financials ? "Financial data unavailable" : null}>
+          <Section title="Financial Trends" loading={financialsLoading} error={financialsError} onRetry={() => loadEndpoint(fetchFinancials, setFinancials, setFinancialsLoading, setFinancialsError)} skeleton={<SkeletonChart />}>
             {financials && financials.length > 0 && (
               <div className="card-base p-4">
                 <ResponsiveContainer width="100%" height={280}>
@@ -204,7 +184,7 @@ export default function FullAnalysis({ stock, analysis, onClose }) {
           </Section>
 
           {/* ===== SECTION 5 — Health Check ===== */}
-          <Section title="Health Check" loading={healthLoading} error={!healthLoading && !health ? "Health data unavailable" : null}>
+          <Section title="Health Check" loading={healthLoading} error={healthError} onRetry={() => loadEndpoint(fetchHealth, setHealth, setHealthLoading, setHealthError)}>
             {health && (
               <div className="space-y-4">
                 {[
@@ -235,9 +215,9 @@ export default function FullAnalysis({ stock, analysis, onClose }) {
           </Section>
 
           {/* ===== SECTION 6 — SEC Filings Intelligence ===== */}
-          <Section title="From the Latest SEC Filing" loading={secLoading} error={!secLoading && !sec ? "SEC data unavailable" : null}>
+          <Section title="From the Latest SEC Filing" loading={secLoading} error={secError} onRetry={() => loadEndpoint(fetchSec, setSec, setSecLoading, setSecError)}>
             {sec && (
-              <div className="space-y-4">
+              <div className="space-y-6">
                 {/* Filing date + tone */}
                 <div className="flex flex-wrap items-center gap-3">
                   {sec.filing_date && (
@@ -250,33 +230,97 @@ export default function FullAnalysis({ stock, analysis, onClose }) {
                   )}
                 </div>
 
-                {/* Segment KPIs table */}
-                {sec.segment_kpis && sec.segment_kpis.length > 0 && (
-                  <div className="card-base overflow-hidden">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-border bg-surface">
-                          <th className="px-4 py-2 text-left text-xs font-semibold uppercase text-text-muted">Segment</th>
-                          <th className="px-4 py-2 text-left text-xs font-semibold uppercase text-text-muted">KPI</th>
-                          <th className="px-4 py-2 text-right text-xs font-semibold uppercase text-text-muted">Value</th>
-                          <th className="px-4 py-2 text-right text-xs font-semibold uppercase text-text-muted">YoY</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {sec.segment_kpis.map((kpi, i) => (
-                          <tr key={i} className={`border-b border-border last:border-b-0 ${i % 2 === 0 ? "bg-card" : "bg-surface"}`}>
-                            <td className="px-4 py-2 text-text-primary">{kpi.segment}</td>
-                            <td className="px-4 py-2">
-                              <FinanceTerm term={kpi.kpi_name} definition={kpi.definition} />
-                            </td>
-                            <td className="mono px-4 py-2 text-right font-medium text-text-primary">{kpi.value}</td>
-                            <td className={`mono px-4 py-2 text-right text-xs font-medium ${String(kpi.yoy_change).startsWith("-") ? "text-red" : "text-green"}`}>
-                              {kpi.yoy_change}
-                            </td>
+                {/* Business Segments — Revenue bar chart + table */}
+                {sec.business_segments && sec.business_segments.length > 0 && (
+                  <div>
+                    <h4 className="mb-3 text-sm font-semibold text-text-primary">Business Segments</h4>
+                    <div className="card-base p-4">
+                      <ResponsiveContainer width="100%" height={Math.max(200, sec.business_segments.length * 50)}>
+                        <BarChart data={sec.business_segments} layout="vertical" margin={{ left: 10 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#D6E4F0" horizontal={false} />
+                          <XAxis type="number" tick={{ fontSize: 11, fill: "#8AA0B8" }} tickFormatter={(v) => `${v}%`} />
+                          <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: "#4A6580" }} width={140} />
+                          <ReTooltip formatter={(v, name) => [`${v}%`, name === "margin_percent" ? "Operating Margin" : name]} />
+                          <Bar dataKey="margin_percent" name="Operating Margin" fill="#2C5F8A" radius={[0, 4, 4, 0]} barSize={18} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="mt-3 card-base overflow-hidden">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-border bg-surface">
+                            <th className="px-4 py-2 text-left text-xs font-semibold uppercase text-text-muted">Segment</th>
+                            <th className="mono px-4 py-2 text-right text-xs font-semibold uppercase text-text-muted">
+                              <FinanceTerm term="Revenue" />
+                            </th>
+                            <th className="mono px-4 py-2 text-right text-xs font-semibold uppercase text-text-muted">
+                              <FinanceTerm term="Op. Income" definition="Operating income — profit from core business operations before interest and taxes." />
+                            </th>
+                            <th className="mono px-4 py-2 text-right text-xs font-semibold uppercase text-text-muted">Margin</th>
+                            <th className="mono px-4 py-2 text-right text-xs font-semibold uppercase text-text-muted">YoY</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {sec.business_segments.map((seg, i) => (
+                            <tr key={i} className={`border-b border-border last:border-b-0 ${i % 2 === 0 ? "bg-card" : "bg-surface"}`}>
+                              <td className="px-4 py-2 font-medium text-text-primary">{seg.name}</td>
+                              <td className="mono px-4 py-2 text-right text-text-secondary">{seg.revenue || "—"}</td>
+                              <td className="mono px-4 py-2 text-right text-text-secondary">{seg.operating_income || "—"}</td>
+                              <td className="mono px-4 py-2 text-right font-medium text-text-primary">{seg.margin_percent != null ? `${seg.margin_percent}%` : "—"}</td>
+                              <td className={`mono px-4 py-2 text-right text-xs font-medium ${String(seg.yoy_revenue_change).startsWith("-") ? "text-red" : "text-green"}`}>
+                                {seg.yoy_revenue_change || "—"}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* Geographic Segments — Horizontal bar + table */}
+                {sec.geographic_segments && sec.geographic_segments.length > 0 && (
+                  <div>
+                    <h4 className="mb-3 text-sm font-semibold text-text-primary">Geographic Breakdown</h4>
+                    <div className="card-base p-4">
+                      <ResponsiveContainer width="100%" height={Math.max(180, sec.geographic_segments.length * 45)}>
+                        <BarChart data={sec.geographic_segments} layout="vertical" margin={{ left: 10 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#D6E4F0" horizontal={false} />
+                          <XAxis type="number" tick={{ fontSize: 11, fill: "#8AA0B8" }} tickFormatter={(v) => `${v}%`} domain={[0, "dataMax"]} />
+                          <YAxis type="category" dataKey="region" tick={{ fontSize: 11, fill: "#4A6580" }} width={130} />
+                          <ReTooltip formatter={(v) => [`${v}%`, "% of Total Revenue"]} />
+                          <Bar dataKey="percent_of_total" name="% of Revenue" radius={[0, 4, 4, 0]} barSize={16}>
+                            {sec.geographic_segments.map((_, i) => (
+                              <Cell key={i} fill={["#2C5F8A", "#4A90C4", "#5B4FCF", "#2E7D5E", "#B8860B", "#8AA0B8"][i % 6]} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="mt-3 card-base overflow-hidden">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-border bg-surface">
+                            <th className="px-4 py-2 text-left text-xs font-semibold uppercase text-text-muted">Region</th>
+                            <th className="mono px-4 py-2 text-right text-xs font-semibold uppercase text-text-muted">Revenue</th>
+                            <th className="mono px-4 py-2 text-right text-xs font-semibold uppercase text-text-muted">% of Total</th>
+                            <th className="mono px-4 py-2 text-right text-xs font-semibold uppercase text-text-muted">YoY Change</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sec.geographic_segments.map((geo, i) => (
+                            <tr key={i} className={`border-b border-border last:border-b-0 ${i % 2 === 0 ? "bg-card" : "bg-surface"}`}>
+                              <td className="px-4 py-2 font-medium text-text-primary">{geo.region}</td>
+                              <td className="mono px-4 py-2 text-right text-text-secondary">{geo.revenue || "—"}</td>
+                              <td className="mono px-4 py-2 text-right font-medium text-text-primary">{geo.percent_of_total != null ? `${geo.percent_of_total}%` : "—"}</td>
+                              <td className={`mono px-4 py-2 text-right text-xs font-medium ${String(geo.yoy_change).startsWith("-") ? "text-red" : "text-green"}`}>
+                                {geo.yoy_change || "—"}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 )}
 
@@ -288,7 +332,7 @@ export default function FullAnalysis({ stock, analysis, onClose }) {
                       <ul className="space-y-1.5">
                         {sec.key_risks.map((r, i) => (
                           <li key={i} className="flex items-start gap-2 text-xs text-text-secondary">
-                            <span className="mt-0.5 text-red">&#x2022;</span>{r}
+                            <span className="mt-0.5 text-red">&#x2022;</span>{wrapFinanceTerms(r)}
                           </li>
                         ))}
                       </ul>
@@ -300,7 +344,7 @@ export default function FullAnalysis({ stock, analysis, onClose }) {
                       <ul className="space-y-1.5">
                         {sec.key_opportunities.map((o, i) => (
                           <li key={i} className="flex items-start gap-2 text-xs text-text-secondary">
-                            <span className="mt-0.5 text-green">&#x2022;</span>{o}
+                            <span className="mt-0.5 text-green">&#x2022;</span>{wrapFinanceTerms(o)}
                           </li>
                         ))}
                       </ul>
@@ -312,12 +356,16 @@ export default function FullAnalysis({ stock, analysis, onClose }) {
           </Section>
 
           {/* ===== SECTION 7 — Latest News ===== */}
-          <Section title="Latest News & What It Means" loading={newsLoading} error={!newsLoading && (!news || news.length === 0) ? "No recent news found" : null}>
-            {news && news.length > 0 && (
+          <Section title="Latest News & What It Means" loading={newsLoading} error={newsError} onRetry={() => loadEndpoint(fetchNews, setNews, setNewsLoading, setNewsError)}>
+            {news && news.length > 0 ? (
               <div className="space-y-3">
                 {news.map((article, i) => <NewsCard key={i} article={article} />)}
               </div>
-            )}
+            ) : news && news.length === 0 ? (
+              <div className="rounded-xl bg-surface px-5 py-8 text-center">
+                <p className="text-sm text-text-muted">No recent news found for {ticker}.</p>
+              </div>
+            ) : null}
           </Section>
 
           {/* ===== Verdict (bottom) ===== */}

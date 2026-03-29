@@ -4,13 +4,15 @@ export default function Layout({ children }) {
   return (
     <div className="min-h-screen bg-background">
       <nav className="border-b border-border bg-card shadow-[var(--shadow-card)]">
-        <div className="mx-auto flex max-w-[1100px] items-center gap-3 px-6 py-4">
-          <span className="heading text-2xl font-extrabold text-accent">Lucid ✦</span>
-          <span className="text-sm text-text-muted">Invest with clarity</span>
+        <div className="mx-auto flex max-w-[1100px] items-center gap-3 px-4 py-3 sm:px-6 sm:py-4">
+          <span className="heading text-xl font-extrabold text-accent sm:text-2xl">Lucid ✦</span>
+          <span className="hidden text-sm text-text-muted sm:inline">Invest with clarity</span>
         </div>
       </nav>
-      <main className="mx-auto max-w-[1100px] px-6 py-8">
-        {children}
+      <main className="mx-auto max-w-[1100px] px-4 py-6 sm:px-6 sm:py-8">
+        <div className="fade-in">
+          {children}
+        </div>
       </main>
       <GlossaryDrawer />
     </div>

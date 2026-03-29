@@ -20,7 +20,7 @@ genai.configure(api_key=GEMINI_API_KEY)
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["http://localhost:5173", "http://localhost:3000"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -127,8 +127,15 @@ async def _ask_gemini(prompt: str) -> dict:
         raise HTTPException(status_code=500, detail=f"Gemini API error: {str(e)}")
 
 
+_eodhd_cache: dict[str, dict] = {}
+
+
 async def _fetch_raw_fundamentals(ticker: str) -> dict:
-    """Fetch raw EODHD fundamentals JSON for a ticker."""
+    """Fetch raw EODHD fundamentals JSON for a ticker (cached)."""
+    cache_key = ticker.upper()
+    if cache_key in _eodhd_cache:
+        return _eodhd_cache[cache_key]
+
     url = f"https://eodhd.com/api/fundamentals/{ticker}.US"
     params = {"api_token": EODHD_API_KEY, "fmt": "json"}
     async with httpx.AsyncClient() as client:
@@ -141,6 +148,7 @@ async def _fetch_raw_fundamentals(ticker: str) -> dict:
         raise HTTPException(status_code=404, detail=f"Ticker {ticker} not found")
     if resp.status_code != 200 or not isinstance(data, dict) or not data.get("General"):
         raise HTTPException(status_code=404, detail=f"Ticker {ticker} not found")
+    _eodhd_cache[cache_key] = data
     return data
 
 
@@ -176,7 +184,7 @@ SUGGESTION_TICKERS = [
     {"ticker": "NVDA", "category": "Growth"},
     {"ticker": "AMZN", "category": "Growth"},
     {"ticker": "JNJ", "category": "Value / Dividend"},
-    {"ticker": "KO", "category": "Value / Dividend"},
+    {"ticker": "AMD", "category": "Growth / Semiconductor"},
 ]
 
 ONELINER_PROMPT = """\
@@ -194,8 +202,15 @@ async def get_stock(ticker: str):
     return await _fetch_stock_data(ticker)
 
 
+_suggestions_cache: list | None = None
+
+
 @app.get("/api/suggestions")
 async def get_suggestions():
+    global _suggestions_cache
+    if _suggestions_cache is not None:
+        return _suggestions_cache
+
     tickers = [s["ticker"] for s in SUGGESTION_TICKERS]
     category_map = {s["ticker"]: s["category"] for s in SUGGESTION_TICKERS}
 
@@ -228,6 +243,7 @@ async def get_suggestions():
     for s in stocks:
         s["one_liner"] = _description_cache.get(s["ticker"], s.get("description", "")[:80])
 
+    _suggestions_cache = stocks
     return stocks
 
 
@@ -388,58 +404,172 @@ async def get_financials(ticker: str):
     return years
 
 
+@app.get("/api/statistics/{ticker}")
+async def get_statistics(ticker: str):
+    """Return organized financial statistics from EODHD. No Gemini, all real data."""
+    data = await _fetch_raw_fundamentals(ticker)
+    h = data.get("Highlights", {})
+    v = data.get("Valuation", {})
+    bs_yearly = data.get("Financials", {}).get("Balance_Sheet", {}).get("yearly", {})
+    cf_yearly = data.get("Financials", {}).get("Cash_Flow", {}).get("yearly", {})
+    inc_yearly = data.get("Financials", {}).get("Income_Statement", {}).get("yearly", {})
+    bs = next(iter(bs_yearly.values()), {}) if bs_yearly else {}
+    cf = next(iter(cf_yearly.values()), {}) if cf_yearly else {}
+    inc = next(iter(inc_yearly.values()), {}) if inc_yearly else {}
+
+    def f(val):
+        if val is None:
+            return None
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            return None
+
+    return {
+        "valuation": [
+            {"name": "Trailing P/E", "value": f(v.get("TrailingPE")), "fmt": "ratio", "definition": "Current price divided by last 12 months earnings. Shows how much you pay per dollar of profit."},
+            {"name": "Forward P/E", "value": f(v.get("ForwardPE")), "fmt": "ratio", "definition": "Current price divided by estimated future earnings. Lower means cheaper relative to expected growth."},
+            {"name": "PEG Ratio", "value": f(h.get("PEGRatio")), "fmt": "ratio", "definition": "P/E divided by earnings growth rate. Under 1 suggests the stock may be undervalued for its growth."},
+            {"name": "Price/Sales", "value": f(v.get("PriceSalesTTM")), "fmt": "ratio", "definition": "Market cap divided by revenue. Useful for valuing companies that aren't yet profitable."},
+            {"name": "Price/Book", "value": f(v.get("PriceBookMRQ")), "fmt": "ratio", "definition": "Market cap divided by net assets. Under 1 could mean the stock trades below its liquidation value."},
+            {"name": "EV/Revenue", "value": f(v.get("EnterpriseValueRevenue")), "fmt": "ratio", "definition": "Enterprise value divided by revenue. Accounts for debt, giving a cleaner picture than Price/Sales."},
+            {"name": "EV/EBITDA", "value": f(v.get("EnterpriseValueEbitda")), "fmt": "ratio", "definition": "Enterprise value divided by operating cash earnings. The go-to metric for comparing acquisition value."},
+        ],
+        "profitability": [
+            {"name": "Gross Margin", "value": f(inc.get("grossProfit")) / f(inc.get("totalRevenue")) * 100 if f(inc.get("totalRevenue")) else None, "fmt": "pct", "definition": "Revenue minus cost of goods sold, as a percentage. Shows pricing power and production efficiency."},
+            {"name": "Operating Margin", "value": f(h.get("OperatingMarginTTM")) and f(h.get("OperatingMarginTTM")) * 100, "fmt": "pct", "definition": "Profit from core operations as a percentage of revenue, before interest and taxes."},
+            {"name": "Net Margin", "value": f(h.get("ProfitMargin")) and f(h.get("ProfitMargin")) * 100, "fmt": "pct", "definition": "What percentage of revenue turns into actual bottom-line profit after all expenses."},
+            {"name": "ROE", "value": f(h.get("ReturnOnEquityTTM")) and f(h.get("ReturnOnEquityTTM")) * 100, "fmt": "pct", "definition": "How much profit the company generates with shareholders' money. Higher means more efficient."},
+            {"name": "ROA", "value": f(h.get("ReturnOnAssetsTTM")) and f(h.get("ReturnOnAssetsTTM")) * 100, "fmt": "pct", "definition": "How efficiently the company uses all its assets to generate profit."},
+            {"name": "R&D / Revenue", "value": f(inc.get("researchDevelopment")) / f(inc.get("totalRevenue")) * 100 if f(inc.get("totalRevenue")) and f(inc.get("researchDevelopment")) else None, "fmt": "pct", "definition": "How much of revenue is reinvested in research. High for tech, low for utilities."},
+        ],
+        "balance_sheet": [
+            {"name": "Cash & Short-Term Investments", "value": f(bs.get("cashAndShortTermInvestments")), "fmt": "dollar", "definition": "Money the company can access quickly. Its war chest for opportunities or emergencies."},
+            {"name": "Total Debt", "value": f(bs.get("shortLongTermDebtTotal")), "fmt": "dollar", "definition": "All money the company owes to lenders, both short-term and long-term."},
+            {"name": "Net Debt", "value": f(bs.get("netDebt")), "fmt": "dollar", "definition": "Total debt minus cash. Negative means the company has more cash than debt."},
+            {"name": "Total Assets", "value": f(bs.get("totalAssets")), "fmt": "dollar", "definition": "Everything the company owns — cash, buildings, equipment, investments, and intangibles."},
+            {"name": "Total Equity", "value": f(bs.get("totalStockholderEquity")), "fmt": "dollar", "definition": "Assets minus liabilities. What shareholders actually own if the company liquidated today."},
+            {"name": "Current Ratio", "value": f(bs.get("totalCurrentAssets")) / f(bs.get("totalCurrentLiabilities")) if f(bs.get("totalCurrentLiabilities")) else None, "fmt": "ratio", "definition": "Current assets divided by current liabilities. Above 1 means the company can pay its short-term bills."},
+            {"name": "Debt/Equity", "value": f(bs.get("shortLongTermDebtTotal")) / f(bs.get("totalStockholderEquity")) if f(bs.get("totalStockholderEquity")) else None, "fmt": "ratio", "definition": "How much debt is used per dollar of equity. Lower is safer, but some debt can boost returns."},
+        ],
+        "cash_flow": [
+            {"name": "Operating Cash Flow", "value": f(cf.get("totalCashFromOperatingActivities")), "fmt": "dollar", "definition": "Cash generated from the actual business operations. The truest measure of earning power."},
+            {"name": "Capital Expenditures", "value": f(cf.get("capitalExpenditures")), "fmt": "dollar", "definition": "Money spent on buildings, equipment, and long-term assets. Necessary investment to keep growing."},
+            {"name": "Free Cash Flow", "value": f(cf.get("freeCashFlow")), "fmt": "dollar", "definition": "Operating cash flow minus CapEx. Money left over to pay dividends, buy back stock, or reduce debt."},
+            {"name": "Dividends Paid", "value": f(cf.get("dividendsPaid")), "fmt": "dollar", "definition": "Total cash returned to shareholders as dividends over the period."},
+            {"name": "Stock Buybacks", "value": abs(f(cf.get("salePurchaseOfStock")) or 0) if f(cf.get("salePurchaseOfStock")) and f(cf.get("salePurchaseOfStock")) < 0 else None, "fmt": "dollar", "definition": "Money spent repurchasing the company's own shares, reducing share count and boosting EPS."},
+            {"name": "Stock-Based Compensation", "value": f(cf.get("stockBasedCompensation")), "fmt": "dollar", "definition": "Non-cash expense from paying employees with stock options. Dilutes existing shareholders."},
+        ],
+        "income_statement": [
+            {"name": "Revenue", "value": f(inc.get("totalRevenue")), "fmt": "dollar", "definition": "Total money earned from selling products and services before any costs are subtracted."},
+            {"name": "Gross Profit", "value": f(inc.get("grossProfit")), "fmt": "dollar", "definition": "Revenue minus the direct cost of making products. The first layer of profitability."},
+            {"name": "Operating Income", "value": f(inc.get("operatingIncome")), "fmt": "dollar", "definition": "Profit from core business after operating expenses but before interest and taxes."},
+            {"name": "EBITDA", "value": f(inc.get("ebitda")), "fmt": "dollar", "definition": "Earnings before interest, taxes, depreciation, and amortization. A proxy for operating cash generation."},
+            {"name": "Net Income", "value": f(inc.get("netIncome")), "fmt": "dollar", "definition": "The bottom line — total profit after every expense, tax, and interest payment."},
+            {"name": "R&D Spending", "value": f(inc.get("researchDevelopment")), "fmt": "dollar", "definition": "How much the company invests in creating new products and improving existing ones."},
+        ],
+    }
+
+
 # ---------------------------------------------------------------------------
 # Health scores
 # ---------------------------------------------------------------------------
-HEALTH_PROMPT = """\
-Given these stock fundamentals, compute three health scores from 0 to 100:
-- profitability_score (based on profit margin, ROE, operating margin)
-- debt_safety_score (based on debt-to-equity, interest coverage, current ratio)
-- growth_score (based on revenue growth, earnings growth, FCF growth)
+def _clamp(value: float, lo: float = 0, hi: float = 100) -> int:
+    return int(max(lo, min(hi, value)))
 
-Return a JSON object with exactly these three keys, each an integer 0-100.
-Return ONLY valid JSON, no markdown or backticks.
 
-Fundamentals:
-{fundamentals}
-"""
+def _safe_float(val) -> float:
+    """Convert any value to float, returning 0 on failure."""
+    if val is None:
+        return 0.0
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return 0.0
+
+
+def _compute_health(data: dict) -> dict:
+    """
+    Deterministic health scores from EODHD fundamentals.
+
+    Profitability Score (0-100):
+      - Net profit margin:    0% → 0pts,  30%+ → 40pts  (weight 40)
+      - Operating margin:     0% → 0pts,  40%+ → 30pts  (weight 30)
+      - ROE:                  0% → 0pts,  30%+ → 30pts  (weight 30)
+
+    Debt Safety Score (0-100):
+      - Current ratio:        <1 → 0pts,  2+ → 40pts    (weight 40)
+      - Debt-to-equity:       >3 → 0pts,  0 → 35pts     (weight 35)
+      - Net debt negative:    bonus 25pts if net debt < 0 (weight 25)
+        else net debt / equity: >2 → 0pts, 0 → 25pts
+
+    Growth Score (0-100):
+      - Quarterly rev growth YOY:       <0 → 0pts, 30%+ → 50pts (weight 50)
+      - Quarterly earnings growth YOY:  <0 → 0pts, 30%+ → 50pts (weight 50)
+    """
+    h = data.get("Highlights", {})
+    bs_yearly = data.get("Financials", {}).get("Balance_Sheet", {}).get("yearly", {})
+    latest_bs = next(iter(bs_yearly.values()), {}) if bs_yearly else {}
+
+    # --- Profitability ---
+    net_margin = _safe_float(h.get("ProfitMargin"))        # e.g. 0.27 = 27%
+    op_margin = _safe_float(h.get("OperatingMarginTTM"))    # e.g. 0.35 = 35%
+    roe = _safe_float(h.get("ReturnOnEquityTTM"))           # e.g. 1.52 = 152%
+
+    prof_margin_pts = _clamp(net_margin / 0.30 * 40, 0, 40)
+    prof_opmarg_pts = _clamp(op_margin / 0.40 * 30, 0, 30)
+    prof_roe_pts = _clamp(min(roe, 0.50) / 0.30 * 30, 0, 30)  # cap ROE contribution at 50%
+    profitability_score = _clamp(prof_margin_pts + prof_opmarg_pts + prof_roe_pts)
+
+    # --- Debt Safety ---
+    total_current_assets = _safe_float(latest_bs.get("totalCurrentAssets"))
+    total_current_liab = _safe_float(latest_bs.get("totalCurrentLiabilities"))
+    total_debt = _safe_float(latest_bs.get("shortLongTermDebtTotal"))
+    total_equity = _safe_float(latest_bs.get("totalStockholderEquity"))
+    net_debt = _safe_float(latest_bs.get("netDebt"))
+
+    current_ratio = total_current_assets / total_current_liab if total_current_liab > 0 else 0
+    debt_to_equity = total_debt / total_equity if total_equity > 0 else 99
+
+    cr_pts = _clamp((current_ratio - 0.5) / 1.5 * 40, 0, 40)   # 0.5→0, 2.0→40
+    de_pts = _clamp((1 - debt_to_equity / 3) * 35, 0, 35)       # 0→35, 3→0
+    if net_debt < 0:
+        nd_pts = 25  # net cash position = full marks
+    else:
+        nd_ratio = net_debt / total_equity if total_equity > 0 else 99
+        nd_pts = _clamp((1 - nd_ratio / 2) * 25, 0, 25)
+    debt_safety_score = _clamp(cr_pts + de_pts + nd_pts)
+
+    # --- Growth ---
+    rev_growth = _safe_float(h.get("QuarterlyRevenueGrowthYOY"))    # e.g. 0.157 = 15.7%
+    earn_growth = _safe_float(h.get("QuarterlyEarningsGrowthYOY"))  # e.g. 0.183 = 18.3%
+
+    rev_pts = _clamp(rev_growth / 0.30 * 50, 0, 50)
+    earn_pts = _clamp(earn_growth / 0.30 * 50, 0, 50)
+    growth_score = _clamp(rev_pts + earn_pts)
+
+    return {
+        "profitability_score": profitability_score,
+        "debt_safety_score": debt_safety_score,
+        "growth_score": growth_score,
+        "details": {
+            "net_margin": round(net_margin * 100, 1),
+            "operating_margin": round(op_margin * 100, 1),
+            "roe": round(roe * 100, 1),
+            "current_ratio": round(current_ratio, 2),
+            "debt_to_equity": round(debt_to_equity, 2),
+            "revenue_growth_yoy": round(rev_growth * 100, 1),
+            "earnings_growth_yoy": round(earn_growth * 100, 1),
+        },
+    }
 
 
 @app.get("/api/health/{ticker}")
 async def get_health(ticker: str):
-    cache_key = f"health:{ticker.upper()}"
-    if cache_key in _gemini_cache:
-        return JSONResponse(content=_gemini_cache[cache_key], media_type="application/json; charset=utf-8")
     data = await _fetch_raw_fundamentals(ticker)
-    highlights = data.get("Highlights", {})
-    prompt = HEALTH_PROMPT.format(fundamentals=json.dumps(highlights, indent=2))
-    result = await _ask_gemini(prompt)
-    _gemini_cache[cache_key] = result
-    return JSONResponse(content=result, media_type="application/json; charset=utf-8")
+    result = _compute_health(data)
+    return result
 
-
-# ---------------------------------------------------------------------------
-# Revenue segments (for pie chart)
-# ---------------------------------------------------------------------------
-@app.get("/api/segments/{ticker}")
-async def get_segments(ticker: str):
-    cache_key = f"segments:{ticker.upper()}"
-    if cache_key in _gemini_cache:
-        return JSONResponse(content=_gemini_cache[cache_key], media_type="application/json; charset=utf-8")
-    data = await _fetch_raw_fundamentals(ticker)
-    general = data.get("General", {})
-    sector = general.get("Sector", "Unknown")
-
-    prompt = (
-        f"Based on your knowledge of {general.get('Name', ticker)} ({ticker}) in the "
-        f"{sector} sector, estimate their revenue breakdown by business segment. "
-        "Return a JSON array of objects: {\"segment\": string, \"percent\": number}. "
-        "Percentages must add to 100. Use 3-6 segments. "
-        "Return ONLY valid JSON, no markdown or backticks."
-    )
-    result = await _ask_gemini(prompt)
-    _gemini_cache[cache_key] = result
-    return JSONResponse(content=result, media_type="application/json; charset=utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -453,7 +583,16 @@ async def get_sec_intelligence(ticker: str):
     cache_key = f"sec:{ticker.upper()}"
     if cache_key in _gemini_cache:
         return JSONResponse(content=_gemini_cache[cache_key], media_type="application/json; charset=utf-8")
-    async with httpx.AsyncClient(timeout=15) as client:
+    try:
+        return await _fetch_sec_data(ticker, cache_key)
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=500, detail="SEC data request failed. Try again.")
+
+
+async def _fetch_sec_data(ticker: str, cache_key: str):
+    async with httpx.AsyncClient(timeout=30) as client:
         # Step 1: look up CIK
         search_resp = await client.get(
             "https://efts.sec.gov/LATEST/search-index",
@@ -523,12 +662,18 @@ async def get_sec_intelligence(ticker: str):
         filing_text = f"No SEC filing text available. Use your knowledge of {ticker}."
 
     prompt = (
-        f"From this MD&A excerpt for {ticker}, extract:\n"
-        "- segment_kpis: array of {{ segment, kpi_name, value, yoy_change, definition }}\n"
-        "- management_tone: positive/neutral/cautious\n"
-        "- key_risks: array of 3 strings\n"
-        "- key_opportunities: array of 3 strings\n"
-        "Return ONLY valid JSON, no markdown or backticks.\n\n"
+        f"From this MD&A excerpt for {ticker}, extract the following structured data.\n\n"
+        "1. business_segments: array of objects for each business/product segment:\n"
+        "   {{ name, revenue (string with $ and unit e.g. '$52.1B'), "
+        "operating_income (string), margin_percent (number), yoy_revenue_change (string e.g. '+12.3%') }}\n\n"
+        "2. geographic_segments: array of objects for each geographic region:\n"
+        "   {{ region, revenue (string with $ and unit), percent_of_total (number), "
+        "yoy_change (string e.g. '+8.1%') }}\n\n"
+        "3. management_tone: one of positive/neutral/cautious\n"
+        "4. key_risks: array of 3 specific risk strings from the filing\n"
+        "5. key_opportunities: array of 3 specific opportunity strings from the filing\n\n"
+        "If exact numbers aren't in the text, use your knowledge of the company's "
+        "latest reported figures. Return ONLY valid JSON, no markdown or backticks.\n\n"
         f"Filing date: {filing_date or 'unknown'}\n"
         f"Text:\n{filing_text[:4000]}"
     )
@@ -550,8 +695,11 @@ async def get_news(ticker: str):
     url = "https://eodhd.com/api/news"
     params = {"s": f"{ticker}.US", "limit": 5, "api_token": EODHD_API_KEY, "fmt": "json"}
 
-    async with httpx.AsyncClient(timeout=15) as client:
-        resp = await client.get(url, params=params)
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.get(url, params=params)
+    except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.TimeoutException):
+        raise HTTPException(status_code=500, detail="News request timed out. Try again.")
 
     if resp.status_code != 200:
         raise HTTPException(status_code=500, detail="Failed to fetch news")
